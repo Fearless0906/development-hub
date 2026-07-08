@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Code2, Github, Mail, Lock, User, ArrowRight, Loader2 } from "lucide-react";
-import { lovable } from "@/integrations/lovable";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -21,7 +20,7 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; username?: string }>({});
   
-  const { user, signIn, signUp, signInWithGitHub } = useAuth();
+  const { user, signIn, signUp, signInWithGitHub, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -95,26 +94,13 @@ const Auth = () => {
   const handleGitHubSignIn = async () => {
     setIsLoading(true);
     await signInWithGitHub();
+    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
-      });
-      if (result.error) {
-        toast.error(result.error.message || "Google sign-in failed");
-        setIsLoading(false);
-        return;
-      }
-      if (result.redirected) return;
-      toast.success("Welcome!");
-      navigate("/");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Google sign-in failed");
-      setIsLoading(false);
-    }
+    await signInWithGoogle();
+    setIsLoading(false);
   };
 
   return (
