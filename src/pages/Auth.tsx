@@ -82,7 +82,9 @@ const Auth = () => {
             toast.error(error.message);
           }
         } else {
-          toast.success("Account created successfully! Welcome to DevHub.");
+          toast.success(
+            "Account created successfully! Welcome to CDS Crash Course.",
+          );
           navigate("/");
         }
       }
@@ -117,7 +119,7 @@ const Auth = () => {
             <Code2 className="h-6 w-6 text-primary-foreground" />
           </div>
           <span className="font-display text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
-            DevHub
+            CDS Crash Course
           </span>
         </a>
 

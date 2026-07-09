@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,12 +24,22 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  Plus,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
+  Pencil,
+  Plus,
   Trash2,
   Code,
-  ImagePlus,
-  Paperclip,
   Bold,
   Italic,
   List,
@@ -39,7 +49,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CourseModule } from "@/types/learning";
+import { CourseModule, Lesson } from "@/types/learning";
 import { CodingChallengeData } from "./CodingChallenge";
 
 interface TestCase {
@@ -48,228 +58,84 @@ interface TestCase {
   description: string;
 }
 
-interface CreateLessonDialogProps {
+interface EditLessonDialogProps {
+  lesson: Lesson;
   modules: CourseModule[];
-  courseId: string;
-  onLessonCreated: (lessonId?: string) => void;
+  onLessonUpdated: (lessonId?: string) => void;
 }
 
-export const CreateLessonDialog = ({
+export const EditLessonDialog = ({
+  lesson,
   modules,
-  courseId,
-  onLessonCreated,
-}: CreateLessonDialogProps) => {
+  onLessonUpdated,
+}: EditLessonDialogProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [createModuleMode, setCreateModuleMode] = useState(false);
-  const [newModuleTitle, setNewModuleTitle] = useState("");
-  const [availableModules, setAvailableModules] = useState(modules);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const contentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [formData, setFormData] = useState({
-    moduleId: "",
-    title: "",
-    content: "",
+    moduleId: lesson.module_id,
+    title: lesson.title,
+    content: lesson.content || "",
     codeLanguage: "tsx",
     codeSnippet: "",
-    imageName: "",
     noteType: "note",
     linkUrl: "",
   });
 
-  // Coding challenge state
-  const [enableChallenge, setEnableChallenge] = useState(false);
+  const [enableChallenge, setEnableChallenge] = useState(
+    Boolean(lesson.challenge),
+  );
   const [challengeData, setChallengeData] = useState({
-    title: "",
-    description: "",
-    starterCode: "// Write your code here\n",
-    solution: "",
+    title: lesson.challenge?.title || "",
+    description: lesson.challenge?.description || "",
+    starterCode: lesson.challenge?.starterCode || "// Write your code here\n",
+    solution: lesson.challenge?.solution || "",
   });
-  const [testCases, setTestCases] = useState<TestCase[]>([
-    { input: "", expectedOutput: "", description: "Test case 1" },
-  ]);
-  const [hints, setHints] = useState<string[]>([""]);
+  const [testCases, setTestCases] = useState<TestCase[]>(
+    lesson.challenge?.testCases?.length
+      ? lesson.challenge.testCases.map((testCase) => ({
+          input: testCase.input,
+          expectedOutput: testCase.expectedOutput,
+          description: testCase.description,
+        }))
+      : [{ input: "", expectedOutput: "", description: "Test case 1" }],
+  );
+  const [hints, setHints] = useState<string[]>(
+    lesson.challenge?.hints?.length ? lesson.challenge.hints : [""],
+  );
 
   useEffect(() => {
-    setAvailableModules(modules);
-  }, [modules]);
+    if (!open) return;
 
-  const handleCreateModule = async () => {
-    if (!newModuleTitle.trim()) {
-      toast.error("Module title is required");
-      return;
-    }
-
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("course_modules")
-      .insert({
-        course_id: courseId,
-        title: newModuleTitle,
-        order_index: availableModules.length,
-      })
-      .select()
-      .single();
-
-    setLoading(false);
-
-    if (error) {
-      toast.error("Failed to create module");
-      return;
-    }
-
-    toast.success("Module created!");
-    setAvailableModules((prev) => [...prev, { ...data, lessons: [] }]);
-    setFormData((prev) => ({ ...prev, moduleId: data.id }));
-    setNewModuleTitle("");
-    setCreateModuleMode(false);
-  };
-
-  const addTestCase = () => {
-    setTestCases([
-      ...testCases,
-      {
-        input: "",
-        expectedOutput: "",
-        description: `Test case ${testCases.length + 1}`,
-      },
-    ]);
-  };
-
-  const removeTestCase = (index: number) => {
-    if (testCases.length > 1) {
-      setTestCases(testCases.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateTestCase = (
-    index: number,
-    field: keyof TestCase,
-    value: string,
-  ) => {
-    const updated = [...testCases];
-    updated[index] = { ...updated[index], [field]: value };
-    setTestCases(updated);
-  };
-
-  const addHint = () => {
-    setHints([...hints, ""]);
-  };
-
-  const removeHint = (index: number) => {
-    if (hints.length > 1) {
-      setHints(hints.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateHint = (index: number, value: string) => {
-    const updated = [...hints];
-    updated[index] = value;
-    setHints(updated);
-  };
-
-  const resetForm = () => {
     setFormData({
-      moduleId: "",
-      title: "",
-      content: "",
+      moduleId: lesson.module_id,
+      title: lesson.title,
+      content: lesson.content || "",
       codeLanguage: "tsx",
       codeSnippet: "",
-      imageName: "",
       noteType: "note",
       linkUrl: "",
     });
-    setEnableChallenge(false);
+    setEnableChallenge(Boolean(lesson.challenge));
     setChallengeData({
-      title: "",
-      description: "",
-      starterCode: "// Write your code here\n",
-      solution: "",
+      title: lesson.challenge?.title || "",
+      description: lesson.challenge?.description || "",
+      starterCode: lesson.challenge?.starterCode || "// Write your code here\n",
+      solution: lesson.challenge?.solution || "",
     });
-    setTestCases([
-      { input: "", expectedOutput: "", description: "Test case 1" },
-    ]);
-    setHints([""]);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.moduleId || !formData.title.trim()) {
-      toast.error("Please select a module and enter a lesson title");
-      return;
-    }
-
-    // Validate coding challenge if enabled
-    if (enableChallenge) {
-      if (!challengeData.title.trim() || !challengeData.description.trim()) {
-        toast.error("Please enter a challenge title and description");
-        return;
-      }
-      if (!challengeData.starterCode.trim() || !challengeData.solution.trim()) {
-        toast.error("Please provide starter code and solution");
-        return;
-      }
-      const validTestCases = testCases.filter(
-        (tc) => tc.description.trim() && tc.expectedOutput.trim(),
-      );
-      if (validTestCases.length === 0) {
-        toast.error(
-          "Please add at least one test case with description and expected output",
-        );
-        return;
-      }
-    }
-
-    setLoading(true);
-
-    const selectedModule = availableModules.find(
-      (m) => m.id === formData.moduleId,
+    setTestCases(
+      lesson.challenge?.testCases?.length
+        ? lesson.challenge.testCases.map((testCase) => ({
+            input: testCase.input,
+            expectedOutput: testCase.expectedOutput,
+            description: testCase.description,
+          }))
+        : [{ input: "", expectedOutput: "", description: "Test case 1" }],
     );
-    const orderIndex = selectedModule ? selectedModule.lessons.length : 0;
-
-    // Build challenge object if enabled
-    let challenge: CodingChallengeData | null = null;
-    if (enableChallenge) {
-      challenge = {
-        id: crypto.randomUUID(),
-        title: challengeData.title,
-        description: challengeData.description,
-        starterCode: challengeData.starterCode,
-        solution: challengeData.solution,
-        testCases: testCases.filter(
-          (tc) => tc.description.trim() && tc.expectedOutput.trim(),
-        ),
-        hints: hints.filter((h) => h.trim()),
-      };
-    }
-
-    const { data, error } = await supabase
-      .from("lessons")
-      .insert({
-        module_id: formData.moduleId,
-        title: formData.title,
-        content: formData.content || null,
-        duration: null,
-        video_url: null,
-        order_index: orderIndex,
-        challenge: challenge as unknown as undefined,
-      })
-      .select("id")
-      .single();
-
-    setLoading(false);
-
-    if (error) {
-      console.error("Error creating lesson:", error);
-      toast.error("Failed to create lesson");
-      return;
-    }
-
-    toast.success("Lesson created successfully!");
-    resetForm();
-    setOpen(false);
-    onLessonCreated(data?.id);
-  };
+    setHints(lesson.challenge?.hints?.length ? lesson.challenge.hints : [""]);
+  }, [lesson, open]);
 
   const appendToContent = (snippet: string) => {
     setFormData((prev) => ({
@@ -325,6 +191,30 @@ export const CreateLessonDialog = ({
     });
   };
 
+  const ensureBlockIsolation = (
+    value: string,
+    start: number,
+    end: number,
+  ): { value: string; start: number; end: number } => {
+    let before = value.slice(0, start);
+    const block = value.slice(start, end);
+    let after = value.slice(end);
+
+    if (before.length > 0 && !before.endsWith("\n\n")) {
+      before = before.replace(/\n*$/, "") + "\n\n";
+    }
+    if (after.length > 0 && !after.startsWith("\n\n")) {
+      after = "\n\n" + after.replace(/^\n*/, "");
+    }
+
+    const nextValue = before + block + after;
+    return {
+      value: nextValue,
+      start: before.length,
+      end: before.length + block.length,
+    };
+  };
+
   const prefixSelectionLines = (prefix: string) => {
     updateContentSelection((value, start, end) => {
       const lineStart = value.lastIndexOf("\n", start - 1) + 1;
@@ -337,26 +227,13 @@ export const CreateLessonDialog = ({
         .join("\n");
       const nextValue =
         value.slice(0, lineStart) + updatedBlock + value.slice(lineEnd);
-      return {
-        value: nextValue,
-        start: lineStart,
-        end: lineStart + updatedBlock.length,
-      };
+
+      return ensureBlockIsolation(
+        nextValue,
+        lineStart,
+        lineStart + updatedBlock.length,
+      );
     });
-  };
-
-  const insertNoteBlock = () => {
-    const labels: Record<string, string> = {
-      note: "NOTE",
-      tip: "TIP",
-      warning: "WARNING",
-      why: "WHY IT MATTERS",
-    };
-
-    appendToContent(
-      `> **${labels[formData.noteType]}**\n> Add your note here.`,
-    );
-    focusContentAtEnd();
   };
 
   const insertLink = () => {
@@ -379,44 +256,18 @@ export const CreateLessonDialog = ({
     setFormData((prev) => ({ ...prev, linkUrl: "" }));
   };
 
-  const handleContentKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (e.key !== "Tab") return;
+  const insertNoteBlock = () => {
+    const labels: Record<string, string> = {
+      note: "NOTE",
+      tip: "TIP",
+      warning: "WARNING",
+      why: "WHY IT MATTERS",
+    };
 
-    e.preventDefault();
-    updateContentSelection((value, start, end) => {
-      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-      const lineEndIndex = value.indexOf("\n", end);
-      const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
-      const block = value.slice(lineStart, lineEnd);
-
-      if (e.shiftKey) {
-        const updatedBlock = block
-          .split("\n")
-          .map((line) => (line.startsWith("  ") ? line.slice(2) : line))
-          .join("\n");
-        const nextValue =
-          value.slice(0, lineStart) + updatedBlock + value.slice(lineEnd);
-        return {
-          value: nextValue,
-          start: lineStart,
-          end: lineStart + updatedBlock.length,
-        };
-      }
-
-      const updatedBlock = block
-        .split("\n")
-        .map((line) => `  ${line}`)
-        .join("\n");
-      const nextValue =
-        value.slice(0, lineStart) + updatedBlock + value.slice(lineEnd);
-      return {
-        value: nextValue,
-        start: lineStart,
-        end: lineStart + updatedBlock.length,
-      };
-    });
+    appendToContent(
+      `> **${labels[formData.noteType]}**\n> Add your note here.`,
+    );
+    focusContentAtEnd();
   };
 
   const focusContentAtEnd = () => {
@@ -431,21 +282,55 @@ export const CreateLessonDialog = ({
     });
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleContentKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (e.key !== "Tab") return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file");
-      return;
-    }
+    e.preventDefault();
+    updateContentSelection((value, start, end) => {
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEndIndex = value.indexOf("\n", end);
+      const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+      const block = value.slice(lineStart, lineEnd);
 
-    setFormData((prev) => ({
-      ...prev,
-      imageName: file.name,
-    }));
-    toast.success("Image attached");
-    e.target.value = "";
+      // 4 spaces, not 2: CommonMark only treats a continuation line as
+      // "nested under" a list item if it's indented at least as far as
+      // that item's marker width. "- " is 2 chars, but "1. " is 3 and
+      // "10. " is 4 — a fixed 2-space indent falls short for ordered
+      // lists and the line pops back out as unindented text. 4 spaces
+      // is wide enough to stay nested under every marker width.
+      const INDENT = "    ";
+
+      if (e.shiftKey) {
+        const updatedBlock = block
+          .split("\n")
+          .map((line) => {
+            const leading = line.match(/^ */)?.[0].length ?? 0;
+            return line.slice(Math.min(leading, INDENT.length));
+          })
+          .join("\n");
+        const nextValue =
+          value.slice(0, lineStart) + updatedBlock + value.slice(lineEnd);
+        return {
+          value: nextValue,
+          start: lineStart,
+          end: lineStart + updatedBlock.length,
+        };
+      }
+
+      const updatedBlock = block
+        .split("\n")
+        .map((line) => `${INDENT}${line}`)
+        .join("\n");
+      const nextValue =
+        value.slice(0, lineStart) + updatedBlock + value.slice(lineEnd);
+      return {
+        value: nextValue,
+        start: lineStart,
+        end: lineStart + updatedBlock.length,
+      };
+    });
   };
 
   const insertCodeBlock = () => {
@@ -461,76 +346,177 @@ export const CreateLessonDialog = ({
     focusContentAtEnd();
   };
 
+  const addTestCase = () => {
+    setTestCases([
+      ...testCases,
+      {
+        input: "",
+        expectedOutput: "",
+        description: `Test case ${testCases.length + 1}`,
+      },
+    ]);
+  };
+
+  const removeTestCase = (index: number) => {
+    if (testCases.length > 1) {
+      setTestCases(testCases.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateTestCase = (
+    index: number,
+    field: keyof TestCase,
+    value: string,
+  ) => {
+    const updated = [...testCases];
+    updated[index] = { ...updated[index], [field]: value };
+    setTestCases(updated);
+  };
+
+  const addHint = () => {
+    setHints([...hints, ""]);
+  };
+
+  const removeHint = (index: number) => {
+    if (hints.length > 1) {
+      setHints(hints.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateHint = (index: number, value: string) => {
+    const updated = [...hints];
+    updated[index] = value;
+    setHints(updated);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.moduleId || !formData.title.trim()) {
+      toast.error("Please select a module and enter a lesson title");
+      return;
+    }
+
+    if (enableChallenge) {
+      if (!challengeData.title.trim() || !challengeData.description.trim()) {
+        toast.error("Please enter a challenge title and description");
+        return;
+      }
+      if (!challengeData.starterCode.trim() || !challengeData.solution.trim()) {
+        toast.error("Please provide starter code and solution");
+        return;
+      }
+      const validTestCases = testCases.filter(
+        (tc) => tc.description.trim() && tc.expectedOutput.trim(),
+      );
+      if (validTestCases.length === 0) {
+        toast.error(
+          "Please add at least one test case with description and expected output",
+        );
+        return;
+      }
+    }
+
+    setLoading(true);
+
+    let challenge: CodingChallengeData | null = null;
+    if (enableChallenge) {
+      challenge = {
+        id: lesson.challenge?.id || crypto.randomUUID(),
+        title: challengeData.title,
+        description: challengeData.description,
+        starterCode: challengeData.starterCode,
+        solution: challengeData.solution,
+        testCases: testCases.filter(
+          (tc) => tc.description.trim() && tc.expectedOutput.trim(),
+        ),
+        hints: hints.filter((hint) => hint.trim()),
+      };
+    }
+
+    const { error } = await supabase
+      .from("lessons")
+      .update({
+        module_id: formData.moduleId,
+        title: formData.title,
+        content: formData.content || null,
+        challenge: challenge as unknown as undefined,
+      })
+      .eq("id", lesson.id);
+
+    setLoading(false);
+
+    if (error) {
+      console.error("Error updating lesson:", error);
+      toast.error("Failed to update lesson");
+      return;
+    }
+
+    toast.success("Lesson updated successfully!");
+    setOpen(false);
+    onLessonUpdated(lesson.id);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+
+    const { error } = await supabase
+      .from("lessons")
+      .delete()
+      .eq("id", lesson.id);
+
+    setDeleting(false);
+
+    if (error) {
+      console.error("Error deleting lesson:", error);
+      toast.error("Failed to delete lesson");
+      return;
+    }
+
+    toast.success("Lesson deleted successfully!");
+    setConfirmDeleteOpen(false);
+    setOpen(false);
+    onLessonUpdated();
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Lesson
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-slate-300 bg-background text-foreground hover:bg-slate-100 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit Lesson
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Lesson</DialogTitle>
+          <DialogTitle>Edit Lesson</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Module *</Label>
-            {createModuleMode ? (
-              <div className="flex gap-2">
-                <Input
-                  value={newModuleTitle}
-                  onChange={(e) => setNewModuleTitle(e.target.value)}
-                  placeholder="New module title"
-                />
-                <Button
-                  type="button"
-                  onClick={handleCreateModule}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Add"
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setCreateModuleMode(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Select
-                  value={formData.moduleId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, moduleId: value })
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a module" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableModules.map((module) => (
-                      <SelectItem key={module.id} value={module.id}>
-                        {module.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCreateModuleMode(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+            <Select
+              value={formData.moduleId}
+              onValueChange={(value) =>
+                setFormData({ ...formData, moduleId: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a module" />
+              </SelectTrigger>
+              <SelectContent>
+                {modules.map((module) => (
+                  <SelectItem key={module.id} value={module.id}>
+                    {module.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="lessonTitle">Lesson Title *</Label>
             <Input
@@ -539,32 +525,67 @@ export const CreateLessonDialog = ({
               onChange={(e) =>
                 setFormData({ ...formData, title: e.target.value })
               }
-              placeholder="e.g., Introduction to Variables"
             />
           </div>
-          {/* <div className="space-y-2">
+
+          <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="content">Content (Markdown supported)</Label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => wrapSelection("**", "**", "bold text")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => wrapSelection("**", "**", "bold text")}
+                >
                   <Bold className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => wrapSelection("*", "*", "italic text")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => wrapSelection("*", "*", "italic text")}
+                >
                   <Italic className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => wrapSelection("`", "`", "inline code")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => wrapSelection("`", "`", "inline code")}
+                >
                   <Code className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => prefixSelectionLines("## ")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefixSelectionLines("## ")}
+                >
                   <Heading2 className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => prefixSelectionLines("- ")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefixSelectionLines("- ")}
+                >
                   <List className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => prefixSelectionLines("1. ")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefixSelectionLines("1. ")}
+                >
                   <ListOrdered className="h-3.5 w-3.5" />
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => prefixSelectionLines("> ")}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefixSelectionLines("> ")}
+                >
                   <Quote className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -586,7 +607,12 @@ export const CreateLessonDialog = ({
                   <SelectItem value="why">Why It Matters</SelectItem>
                 </SelectContent>
               </Select>
-              <Button type="button" variant="outline" size="sm" onClick={insertNoteBlock}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={insertNoteBlock}
+              >
                 Add Note
               </Button>
               <Input
@@ -597,7 +623,12 @@ export const CreateLessonDialog = ({
                 placeholder="https://example.com"
                 className="h-8 w-[220px] bg-background"
               />
-              <Button type="button" variant="outline" size="sm" onClick={insertLink}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={insertLink}
+              >
                 Add Link
               </Button>
               <span className="text-xs text-muted-foreground">
@@ -608,51 +639,16 @@ export const CreateLessonDialog = ({
               id="content"
               ref={contentTextareaRef}
               value={formData.content}
-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, content: e.target.value })
+              }
               onKeyDown={handleContentKeyDown}
               placeholder="Lesson content..."
-              rows={6}
+              rows={8}
             />
-          </div> */}
-          {/* <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="lessonImage">Lesson Image</Label>
-              <input
-                id="lessonImage"
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <div className="rounded-lg border border-border bg-secondary/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                      {formData.imageName ? (
-                        <Paperclip className="h-4 w-4" />
-                      ) : (
-                        <ImagePlus className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {formData.imageName || "No attachment selected"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formData.imageName
-                          ? "Image attached to this lesson"
-                          : "Upload an image and it will be added when you create the lesson."}
-                      </p>
-                    </div>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" asChild>
-                    <label htmlFor="lessonImage" className="cursor-pointer">
-                      {formData.imageName ? "Replace" : "Attach"}
-                    </label>
-                  </Button>
-                </div>
-              </div>
-            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="codeLanguage">Code Language</Label>
               <Select
@@ -675,32 +671,31 @@ export const CreateLessonDialog = ({
                 </SelectContent>
               </Select>
             </div>
-          </div> */}
-          {/* <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="codeSnippet">Code Snippet</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={insertCodeBlock}
-              >
-                Add Code to Content
-              </Button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="codeSnippet">Code Snippet</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={insertCodeBlock}
+                >
+                  Add Code to Content
+                </Button>
+              </div>
+              <Textarea
+                id="codeSnippet"
+                value={formData.codeSnippet}
+                onChange={(e) =>
+                  setFormData({ ...formData, codeSnippet: e.target.value })
+                }
+                placeholder="// Paste code to append"
+                className="font-mono text-sm"
+                rows={5}
+              />
             </div>
-            <Textarea
-              id="codeSnippet"
-              value={formData.codeSnippet}
-              onChange={(e) =>
-                setFormData({ ...formData, codeSnippet: e.target.value })
-              }
-              placeholder="// Paste the code you want to show in this lesson"
-              className="font-mono text-sm"
-              rows={6}
-            />
-          </div> */}
+          </div>
 
-          {/* Coding Challenge Section */}
           <Accordion type="single" collapsible className="border rounded-lg">
             <AccordionItem value="challenge" className="border-none">
               <AccordionTrigger className="px-4 hover:no-underline">
@@ -719,12 +714,15 @@ export const CreateLessonDialog = ({
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      id="enableChallenge"
+                      id={`enableChallenge-${lesson.id}`}
                       checked={enableChallenge}
                       onChange={(e) => setEnableChallenge(e.target.checked)}
                       className="rounded border-border"
                     />
-                    <Label htmlFor="enableChallenge" className="cursor-pointer">
+                    <Label
+                      htmlFor={`enableChallenge-${lesson.id}`}
+                      className="cursor-pointer"
+                    >
                       Add a coding challenge to this lesson
                     </Label>
                   </div>
@@ -742,7 +740,6 @@ export const CreateLessonDialog = ({
                                 title: e.target.value,
                               })
                             }
-                            placeholder="e.g., FizzBuzz Challenge"
                           />
                         </div>
                         <div className="space-y-2">
@@ -755,7 +752,6 @@ export const CreateLessonDialog = ({
                                 description: e.target.value,
                               })
                             }
-                            placeholder="Describe what the student needs to do"
                           />
                         </div>
                       </div>
@@ -770,7 +766,6 @@ export const CreateLessonDialog = ({
                               starterCode: e.target.value,
                             })
                           }
-                          placeholder="// Code template for students..."
                           className="font-mono text-sm"
                           rows={5}
                         />
@@ -786,13 +781,11 @@ export const CreateLessonDialog = ({
                               solution: e.target.value,
                             })
                           }
-                          placeholder="// The correct solution..."
                           className="font-mono text-sm"
                           rows={5}
                         />
                       </div>
 
-                      {/* Test Cases */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Label>Test Cases *</Label>
@@ -837,44 +830,37 @@ export const CreateLessonDialog = ({
                                     e.target.value,
                                   )
                                 }
-                                placeholder="Description (e.g., Should return 'Hello World')"
+                                placeholder="Description"
                                 className="text-sm"
                               />
-                              <div className="grid grid-cols-2 gap-2">
-                                <Input
-                                  value={testCase.input}
-                                  onChange={(e) =>
-                                    updateTestCase(
-                                      index,
-                                      "input",
-                                      e.target.value,
-                                    )
-                                  }
-                                  placeholder="Input (optional)"
-                                  className="text-sm"
-                                />
-                                <Input
-                                  value={testCase.expectedOutput}
-                                  onChange={(e) =>
-                                    updateTestCase(
-                                      index,
-                                      "expectedOutput",
-                                      e.target.value,
-                                    )
-                                  }
-                                  placeholder="Expected output *"
-                                  className="text-sm"
-                                />
-                              </div>
+                              <Input
+                                value={testCase.input}
+                                onChange={(e) =>
+                                  updateTestCase(index, "input", e.target.value)
+                                }
+                                placeholder="Input (optional)"
+                                className="text-sm font-mono"
+                              />
+                              <Input
+                                value={testCase.expectedOutput}
+                                onChange={(e) =>
+                                  updateTestCase(
+                                    index,
+                                    "expectedOutput",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Expected output"
+                                className="text-sm font-mono"
+                              />
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* Hints */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label>Hints (Optional)</Label>
+                          <Label>Hints</Label>
                           <Button
                             type="button"
                             variant="outline"
@@ -893,16 +879,15 @@ export const CreateLessonDialog = ({
                                 onChange={(e) =>
                                   updateHint(index, e.target.value)
                                 }
-                                placeholder={`Hint ${index + 1}...`}
-                                className="text-sm"
+                                placeholder={`Hint ${index + 1}`}
                               />
                               {hints.length > 1 && (
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  size="icon"
+                                  size="sm"
                                   onClick={() => removeHint(index)}
-                                  className="text-destructive hover:text-destructive shrink-0"
+                                  className="text-destructive hover:text-destructive"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -919,6 +904,48 @@ export const CreateLessonDialog = ({
           </Accordion>
 
           <div className="flex justify-end gap-2">
+            <AlertDialog
+              open={confirmDeleteOpen}
+              onOpenChange={setConfirmDeleteOpen}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={loading || deleting}
+                  className="mr-auto"
+                >
+                  {deleting && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Delete Lesson
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete lesson?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Delete lesson "{lesson.title}"? This action cannot be
+                    undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleting && (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    )}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               type="button"
               variant="outline"
@@ -926,9 +953,9 @@ export const CreateLessonDialog = ({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !formData.moduleId}>
+            <Button type="submit" disabled={loading || deleting}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Lesson
+              Save Changes
             </Button>
           </div>
         </form>

@@ -68,7 +68,7 @@ export const Certificate = ({
           const file = new File([blob], "certificate.png", { type: "image/png" });
           const shareData = {
             title: `Certificate of Completion - ${courseName}`,
-            text: `I just completed ${courseName} on DevHub!`,
+            text: `I just completed ${courseName} on CDS Crash Course!`,
             files: [file],
           };
 
@@ -135,9 +135,11 @@ export const Certificate = ({
               {/* Logo */}
               <div className="flex items-center gap-2 mb-6">
                 <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">D</span>
+                  <span className="text-white font-bold text-lg">C</span>
                 </div>
-                <span className="text-2xl font-bold text-white">DevHub</span>
+                <span className="text-2xl font-bold text-white">
+                  CDS Crash Course
+                </span>
               </div>
 
               {/* Title */}
