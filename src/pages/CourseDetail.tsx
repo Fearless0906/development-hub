@@ -3,18 +3,41 @@ import { useParams, Link } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import {
-  BookOpen, Code, Database, Globe, Layers, Lock,
-  Clock, Users, Star, ChevronLeft, ChevronRight,
-  CheckCircle, Circle, PlayCircle, List, Award, HelpCircle, Loader2
+  BookOpen,
+  Code,
+  Database,
+  Globe,
+  Layers,
+  Lock,
+  Clock,
+  Users,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  Circle,
+  PlayCircle,
+  List,
+  Award,
+  HelpCircle,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Certificate } from "@/components/learning/Certificate";
 import { Quiz, QuizQuestion } from "@/components/learning/Quiz";
-import { CodingChallenge, CodingChallengeData } from "@/components/learning/CodingChallenge";
+import {
+  CodingChallenge,
+  CodingChallengeData,
+} from "@/components/learning/CodingChallenge";
 import { CreateLessonDialog } from "@/components/learning/CreateLessonDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,26 +93,30 @@ const CourseDetail = () => {
     // Fetch modules with lessons
     const { data: modulesData, error: modulesError } = await supabase
       .from("course_modules")
-      .select(`
+      .select(
+        `
         *,
         lessons (*)
-      `)
+      `,
+      )
       .eq("course_id", courseData.id)
       .order("order_index");
 
     if (modulesError) {
       console.error("Error fetching modules:", modulesError);
     } else {
-      const transformedModules: CourseModule[] = (modulesData || []).map((m: any) => ({
-        ...m,
-        lessons: (m.lessons || [])
-          .sort((a: any, b: any) => a.order_index - b.order_index)
-          .map((l: any) => ({
-            ...l,
-            quiz: l.quiz as QuizQuestion[] | null,
-            challenge: l.challenge as CodingChallengeData | null,
-          })),
-      }));
+      const transformedModules: CourseModule[] = (modulesData || []).map(
+        (m: any) => ({
+          ...m,
+          lessons: (m.lessons || [])
+            .sort((a: any, b: any) => a.order_index - b.order_index)
+            .map((l: any) => ({
+              ...l,
+              quiz: l.quiz as QuizQuestion[] | null,
+              challenge: l.challenge as CodingChallengeData | null,
+            })),
+        }),
+      );
       setModules(transformedModules);
 
       // Set first lesson as current if not set
@@ -121,13 +148,17 @@ const CourseDetail = () => {
   }, [courseId, user]);
 
   const allLessons = modules.flatMap((m) => m.lessons);
-  const currentLesson = allLessons.find((l) => l.id === currentLessonId) || allLessons[0];
-  const currentLessonIndex = allLessons.findIndex((l) => l.id === currentLesson?.id);
+  const currentLesson =
+    allLessons.find((l) => l.id === currentLessonId) || allLessons[0];
+  const currentLessonIndex = allLessons.findIndex(
+    (l) => l.id === currentLesson?.id,
+  );
 
   const completedCount = completedLessons.length;
-  const progressPercent = allLessons.length > 0 
-    ? Math.round((completedCount / allLessons.length) * 100) 
-    : 0;
+  const progressPercent =
+    allLessons.length > 0
+      ? Math.round((completedCount / allLessons.length) * 100)
+      : 0;
 
   const markLessonComplete = async () => {
     if (!user || !course || !currentLesson) {
@@ -139,19 +170,22 @@ const CourseDetail = () => {
       ? completedLessons
       : [...completedLessons, currentLesson.id];
 
-    const newProgress = Math.round((newCompletedLessons.length / allLessons.length) * 100);
+    const newProgress = Math.round(
+      (newCompletedLessons.length / allLessons.length) * 100,
+    );
 
-    const { error } = await supabase
-      .from("user_course_progress")
-      .upsert({
+    const { error } = await supabase.from("user_course_progress").upsert(
+      {
         user_id: user.id,
         course_id: course.id,
         completed_lessons: newCompletedLessons,
         progress_percent: newProgress,
         completed_at: newProgress === 100 ? new Date().toISOString() : null,
-      }, {
+      },
+      {
         onConflict: "user_id,course_id",
-      });
+      },
+    );
 
     if (error) {
       console.error("Error updating progress:", error);
@@ -192,8 +226,12 @@ const CourseDetail = () => {
         <main className="pt-24 pb-16">
           <div className="container max-w-4xl mx-auto px-4 text-center">
             <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h1 className="font-display text-3xl font-bold mb-4">Course Not Found</h1>
-            <p className="text-muted-foreground mb-8">The course you're looking for doesn't exist.</p>
+            <h1 className="font-display text-3xl font-bold mb-4">
+              Course Not Found
+            </h1>
+            <p className="text-muted-foreground mb-8">
+              The course you're looking for doesn't exist.
+            </p>
             <Button asChild>
               <Link to="/learning">Back to Courses</Link>
             </Button>
@@ -219,7 +257,10 @@ const CourseDetail = () => {
         <div className="border-b border-border/50 bg-card/50">
           <div className="container max-w-7xl mx-auto px-4 py-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-              <Link to="/learning" className="hover:text-foreground flex items-center gap-1">
+              <Link
+                to="/learning"
+                className="hover:text-foreground flex items-center gap-1"
+              >
                 <ChevronLeft className="h-4 w-4" />
                 Back to Courses
               </Link>
@@ -231,8 +272,13 @@ const CourseDetail = () => {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <h1 className="font-display text-2xl font-bold">{course.title}</h1>
-                    <Badge variant="secondary" className={levelColors[course.level]}>
+                    <h1 className="font-display text-2xl font-bold">
+                      {course.title}
+                    </h1>
+                    <Badge
+                      variant="secondary"
+                      className={levelColors[course.level]}
+                    >
                       {course.level}
                     </Badge>
                   </div>
@@ -258,21 +304,28 @@ const CourseDetail = () => {
               </div>
               <div className="flex items-center gap-4">
                 {isAdmin && (
-                  <CreateLessonDialog 
-                    modules={modules} 
-                    courseId={course.id} 
-                    onLessonCreated={fetchCourseData} 
+                  <CreateLessonDialog
+                    modules={modules}
+                    courseId={course.id}
+                    onLessonCreated={fetchCourseData}
                   />
                 )}
                 <div className="text-right hidden sm:block">
-                  <div className="text-sm text-muted-foreground mb-1">Your Progress</div>
-                  <div className="text-lg font-bold text-primary">{progressPercent}% Complete</div>
+                  <div className="text-sm text-muted-foreground mb-1">
+                    Your Progress
+                  </div>
+                  <div className="text-lg font-bold text-primary">
+                    {progressPercent}% Complete
+                  </div>
                 </div>
                 <div className="w-24">
                   <Progress value={progressPercent} className="h-2" />
                 </div>
                 {progressPercent === 100 && (
-                  <Button onClick={() => setShowCertificate(true)} className="hidden sm:flex">
+                  <Button
+                    onClick={() => setShowCertificate(true)}
+                    className="hidden sm:flex"
+                  >
                     <Award className="h-4 w-4 mr-2" />
                     Get Certificate
                   </Button>
@@ -287,11 +340,15 @@ const CourseDetail = () => {
           isOpen={showCertificate}
           onClose={() => setShowCertificate(false)}
           courseName={course.title}
-          studentName={user?.user_metadata?.username || user?.email?.split("@")[0] || "Student"}
-          completionDate={new Date().toLocaleDateString("en-US", { 
-            year: "numeric", 
-            month: "long", 
-            day: "numeric" 
+          studentName={
+            user?.user_metadata?.username ||
+            user?.email?.split("@")[0] ||
+            "Student"
+          }
+          completionDate={new Date().toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
           })}
           instructorName={course.instructor_name || "Instructor"}
         />
@@ -306,22 +363,27 @@ const CourseDetail = () => {
                 This course doesn't have any lessons yet.
               </p>
               {isAdmin && (
-                <CreateLessonDialog 
-                  modules={modules} 
-                  courseId={course.id} 
-                  onLessonCreated={fetchCourseData} 
+                <CreateLessonDialog
+                  modules={modules}
+                  courseId={course.id}
+                  onLessonCreated={fetchCourseData}
                 />
               )}
             </div>
           ) : (
             <div className="flex gap-6">
               {/* Video & Content Area */}
-              <div className={cn("flex-1 space-y-6", showSidebar ? "lg:mr-80" : "")}>
-              {/* Video Player */}
-              <VideoPlayer videoUrl={currentLesson?.video_url} />
+              <div
+                className={cn(
+                  "flex-1 space-y-6",
+                  showSidebar ? "lg:mr-80" : "",
+                )}
+              >
+                {/* Video Player */}
+                {/* <VideoPlayer videoUrl={currentLesson?.video_url} /> */}
 
                 {/* Lesson Navigation */}
-                <div className="flex items-center justify-between">
+                {/* <div className="flex items-center justify-between">
                   <Button
                     variant="outline"
                     onClick={goToPrevLesson}
@@ -351,37 +413,62 @@ const CourseDetail = () => {
                     Next
                     <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
-                </div>
+                </div> */}
 
                 {/* Lesson Content */}
                 <div className="glass-card p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-display text-xl font-semibold">{currentLesson?.title}</h2>
-                    <Button 
-                      variant={completedLessons.includes(currentLesson?.id || "") ? "secondary" : "outline"} 
+                    <h2 className="font-display text-xl font-semibold">
+                      {currentLesson?.title}
+                    </h2>
+                    <Button
+                      variant={
+                        completedLessons.includes(currentLesson?.id || "")
+                          ? "secondary"
+                          : "outline"
+                      }
                       size="sm"
                       onClick={markLessonComplete}
-                      disabled={completedLessons.includes(currentLesson?.id || "")}
+                      disabled={completedLessons.includes(
+                        currentLesson?.id || "",
+                      )}
                     >
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      {completedLessons.includes(currentLesson?.id || "") ? "Completed" : "Mark Complete"}
+                      {completedLessons.includes(currentLesson?.id || "")
+                        ? "Completed"
+                        : "Mark Complete"}
                     </Button>
                   </div>
                   <div className="prose prose-invert max-w-none">
-                    {currentLesson?.content?.split('\n').map((line, i) => {
-                      if (line.startsWith('## ')) {
-                        return <h3 key={i} className="text-lg font-semibold mt-6 mb-3">{line.replace('## ', '')}</h3>;
+                    {currentLesson?.content?.split("\n").map((line, i) => {
+                      if (line.startsWith("## ")) {
+                        return (
+                          <h3
+                            key={i}
+                            className="text-lg font-semibold mt-6 mb-3"
+                          >
+                            {line.replace("## ", "")}
+                          </h3>
+                        );
                       }
-                      if (line.startsWith('- ')) {
-                        return <li key={i} className="text-muted-foreground ml-4">{line.replace('- ', '')}</li>;
+                      if (line.startsWith("- ")) {
+                        return (
+                          <li key={i} className="text-muted-foreground ml-4">
+                            {line.replace("- ", "")}
+                          </li>
+                        );
                       }
-                      if (line.startsWith('```')) {
+                      if (line.startsWith("```")) {
                         return null;
                       }
-                      if (line.trim() === '') {
+                      if (line.trim() === "") {
                         return <br key={i} />;
                       }
-                      return <p key={i} className="text-muted-foreground mb-2">{line}</p>;
+                      return (
+                        <p key={i} className="text-muted-foreground mb-2">
+                          {line}
+                        </p>
+                      );
                     })}
                   </div>
                 </div>
@@ -393,10 +480,12 @@ const CourseDetail = () => {
                       <HelpCircle className="h-5 w-5 text-primary" />
                       Knowledge Check
                     </h3>
-                    <Quiz 
-                      questions={currentLesson.quiz} 
+                    <Quiz
+                      questions={currentLesson.quiz}
                       onComplete={(score, total) => {
-                        toast.success(`Quiz completed! You scored ${score}/${total}`);
+                        toast.success(
+                          `Quiz completed! You scored ${score}/${total}`,
+                        );
                       }}
                     />
                   </div>
@@ -409,7 +498,7 @@ const CourseDetail = () => {
                       <Code className="h-5 w-5 text-primary" />
                       Coding Challenge
                     </h3>
-                    <CodingChallenge 
+                    <CodingChallenge
                       challenge={currentLesson.challenge}
                       lessonId={currentLesson.id}
                       onComplete={(passed) => {
@@ -433,25 +522,37 @@ const CourseDetail = () => {
                       </p>
                     </div>
                     <ScrollArea className="flex-1">
-                      <Accordion type="multiple" defaultValue={modules.map(m => m.id)} className="p-2">
+                      <Accordion
+                        type="multiple"
+                        defaultValue={modules.map((m) => m.id)}
+                        className="p-2"
+                      >
                         {modules.map((module) => (
-                          <AccordionItem key={module.id} value={module.id} className="border-none">
+                          <AccordionItem
+                            key={module.id}
+                            value={module.id}
+                            className="border-none"
+                          >
                             <AccordionTrigger className="px-3 py-2 hover:bg-secondary/50 rounded-lg text-sm font-medium">
                               {module.title}
                             </AccordionTrigger>
                             <AccordionContent className="pb-0">
                               <div className="space-y-1 pl-2">
                                 {module.lessons.map((lesson) => {
-                                  const isCompleted = completedLessons.includes(lesson.id);
+                                  const isCompleted = completedLessons.includes(
+                                    lesson.id,
+                                  );
                                   return (
                                     <button
                                       key={lesson.id}
-                                      onClick={() => setCurrentLessonId(lesson.id)}
+                                      onClick={() =>
+                                        setCurrentLessonId(lesson.id)
+                                      }
                                       className={cn(
                                         "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors",
                                         currentLesson?.id === lesson.id
                                           ? "bg-primary/10 text-primary"
-                                          : "hover:bg-secondary/50"
+                                          : "hover:bg-secondary/50",
                                       )}
                                     >
                                       {isCompleted ? (
@@ -462,13 +563,18 @@ const CourseDetail = () => {
                                         <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                                       )}
                                       <div className="flex-1 min-w-0">
-                                        <p className={cn(
-                                          "text-sm truncate",
-                                          isCompleted && "text-muted-foreground"
-                                        )}>
+                                        <p
+                                          className={cn(
+                                            "text-sm truncate",
+                                            isCompleted &&
+                                              "text-muted-foreground",
+                                          )}
+                                        >
                                           {lesson.title}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">{lesson.duration || "—"}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {lesson.duration || "—"}
+                                        </p>
                                       </div>
                                     </button>
                                   );
