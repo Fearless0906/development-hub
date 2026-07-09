@@ -20,7 +20,6 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
     title: "",
     description: "",
     level: "Beginner" as "Beginner" | "Intermediate" | "Advanced",
-    duration: "",
     instructorName: "",
     instructorTitle: "",
     topics: "",
@@ -46,7 +45,7 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
       description: formData.description || null,
       slug,
       level: formData.level,
-      duration: formData.duration || null,
+      duration: null,
       instructor_name: formData.instructorName || null,
       instructor_title: formData.instructorTitle || null,
       topics: formData.topics ? formData.topics.split(",").map((t) => t.trim()) : [],
@@ -70,7 +69,6 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
       title: "",
       description: "",
       level: "Beginner",
-      duration: "",
       instructorName: "",
       instructorTitle: "",
       topics: "",
@@ -111,32 +109,21 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
               rows={3}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="level">Level</Label>
-              <Select
-                value={formData.level}
-                onValueChange={(value) => setFormData({ ...formData, level: value as typeof formData.level })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Beginner">Beginner</SelectItem>
-                  <SelectItem value="Intermediate">Intermediate</SelectItem>
-                  <SelectItem value="Advanced">Advanced</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="duration">Duration</Label>
-              <Input
-                id="duration"
-                value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                placeholder="e.g., 8 hours"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="level">Level</Label>
+            <Select
+              value={formData.level}
+              onValueChange={(value) => setFormData({ ...formData, level: value as typeof formData.level })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Beginner">Beginner</SelectItem>
+                <SelectItem value="Intermediate">Intermediate</SelectItem>
+                <SelectItem value="Advanced">Advanced</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

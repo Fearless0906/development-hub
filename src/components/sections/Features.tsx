@@ -60,8 +60,8 @@ export const Features = () => {
             <span className="text-gradient-primary">level up</span>
           </h2>
           <p className="text-lg text-muted-foreground">
-            From beginner tutorials to advanced system design, DevHub has the tools 
-            and community to accelerate your growth.
+            From beginner lessons to guided practice, CDS Crash Course has the
+            tools to support your growth.
           </p>
         </div>
 

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import {
@@ -9,7 +9,6 @@ import {
   Globe,
   Layers,
   Lock,
-  Clock,
   Users,
   Star,
   ChevronLeft,
@@ -21,11 +20,24 @@ import {
   Award,
   HelpCircle,
   Loader2,
+  Trash2,
+  Edit2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Accordion,
   AccordionContent,
@@ -39,12 +51,17 @@ import {
   CodingChallengeData,
 } from "@/components/learning/CodingChallenge";
 import { CreateLessonDialog } from "@/components/learning/CreateLessonDialog";
+import { EditLessonDialog } from "@/components/learning/EditLessonDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Course, CourseModule, Lesson } from "@/types/learning";
+import {
+  LessonContent,
+  RichTextEditor,
+} from "@/components/markdown/RichTextEditor";
 
 const iconMap: Record<string, React.ElementType> = {
   Code,
@@ -55,10 +72,9 @@ const iconMap: Record<string, React.ElementType> = {
   BookOpen,
 };
 
-import { VideoPlayer } from "@/components/learning/VideoPlayer";
-
 const CourseDetail = () => {
   const { courseId } = useParams<{ courseId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin } = useIsAdmin();
 
@@ -69,13 +85,24 @@ const CourseDetail = () => {
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showCertificate, setShowCertificate] = useState(false);
+  const [pendingLessonId, setPendingLessonId] = useState<string | null>(null);
+  const [deleteCourseOpen, setDeleteCourseOpen] = useState(false);
+  const [deletingCourse, setDeletingCourse] = useState(false);
+  const [moduleToDelete, setModuleToDelete] = useState<CourseModule | null>(
+    null,
+  );
+  const [deletingModuleId, setDeletingModuleId] = useState<string | null>(null);
+  const lessonItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const lessonSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
+  const [savingLessonId, setSavingLessonId] = useState<string | null>(null);
 
-  const fetchCourseData = async () => {
+  const fetchCourseData = async (targetLessonId?: string) => {
     if (!courseId) return;
 
     setLoading(true);
 
-    // Fetch course by slug
     const { data: courseData, error: courseError } = await supabase
       .from("courses")
       .select("*")
@@ -90,7 +117,6 @@ const CourseDetail = () => {
 
     setCourse(courseData as Course);
 
-    // Fetch modules with lessons
     const { data: modulesData, error: modulesError } = await supabase
       .from("course_modules")
       .select(
@@ -119,14 +145,24 @@ const CourseDetail = () => {
       );
       setModules(transformedModules);
 
-      // Set first lesson as current if not set
       const allLessons = transformedModules.flatMap((m) => m.lessons);
-      if (allLessons.length > 0 && !currentLessonId) {
+      if (
+        targetLessonId &&
+        allLessons.some((lesson) => lesson.id === targetLessonId)
+      ) {
+        setCurrentLessonId(targetLessonId);
+        setPendingLessonId(targetLessonId);
+      } else if (
+        allLessons.length > 0 &&
+        (!currentLessonId ||
+          !allLessons.some((lesson) => lesson.id === currentLessonId))
+      ) {
         setCurrentLessonId(allLessons[0].id);
+      } else if (allLessons.length === 0) {
+        setCurrentLessonId(null);
       }
     }
 
-    // Fetch user progress if logged in
     if (user) {
       const { data: progressData } = await supabase
         .from("user_course_progress")
@@ -147,12 +183,23 @@ const CourseDetail = () => {
     fetchCourseData();
   }, [courseId, user]);
 
+  useEffect(() => {
+    if (!pendingLessonId || currentLessonId !== pendingLessonId) return;
+
+    requestAnimationFrame(() => {
+      lessonItemRefs.current[pendingLessonId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+      lessonSectionRefs.current[pendingLessonId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingLessonId(null);
+    });
+  }, [currentLessonId, pendingLessonId]);
+
   const allLessons = modules.flatMap((m) => m.lessons);
-  const currentLesson =
-    allLessons.find((l) => l.id === currentLessonId) || allLessons[0];
-  const currentLessonIndex = allLessons.findIndex(
-    (l) => l.id === currentLesson?.id,
-  );
 
   const completedCount = completedLessons.length;
   const progressPercent =
@@ -160,15 +207,15 @@ const CourseDetail = () => {
       ? Math.round((completedCount / allLessons.length) * 100)
       : 0;
 
-  const markLessonComplete = async () => {
-    if (!user || !course || !currentLesson) {
+  const markLessonComplete = async (lessonId: string) => {
+    if (!user || !course) {
       toast.error("Please sign in to track progress");
       return;
     }
 
-    const newCompletedLessons = completedLessons.includes(currentLesson.id)
+    const newCompletedLessons = completedLessons.includes(lessonId)
       ? completedLessons
-      : [...completedLessons, currentLesson.id];
+      : [...completedLessons, lessonId];
 
     const newProgress = Math.round(
       (newCompletedLessons.length / allLessons.length) * 100,
@@ -196,16 +243,112 @@ const CourseDetail = () => {
     }
   };
 
-  const goToNextLesson = () => {
-    if (currentLessonIndex < allLessons.length - 1) {
-      setCurrentLessonId(allLessons[currentLessonIndex + 1].id);
-    }
+  const scrollToLesson = (lessonId: string) => {
+    setCurrentLessonId(lessonId);
+    lessonSectionRefs.current[lessonId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    lessonItemRefs.current[lessonId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
   };
 
-  const goToPrevLesson = () => {
-    if (currentLessonIndex > 0) {
-      setCurrentLessonId(allLessons[currentLessonIndex - 1].id);
+  const handleRemoveModule = async (moduleToRemove: CourseModule) => {
+    setDeletingModuleId(moduleToRemove.id);
+
+    const { error: lessonsError } = await supabase
+      .from("lessons")
+      .delete()
+      .eq("module_id", moduleToRemove.id);
+
+    if (lessonsError) {
+      console.error("Error deleting module lessons:", lessonsError);
+      toast.error("Failed to remove module");
+      setDeletingModuleId(null);
+      return;
     }
+
+    const { error: moduleError } = await supabase
+      .from("course_modules")
+      .delete()
+      .eq("id", moduleToRemove.id);
+
+    if (moduleError) {
+      console.error("Error deleting module:", moduleError);
+      toast.error("Failed to remove module");
+      setDeletingModuleId(null);
+      return;
+    }
+
+    setDeletingModuleId(null);
+    setModuleToDelete(null);
+    toast.success("Module removed");
+    fetchCourseData();
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!course) return;
+
+    setDeletingCourse(true);
+
+    const moduleIds = modules.map((module) => module.id);
+
+    const { error: progressError } = await supabase
+      .from("user_course_progress")
+      .delete()
+      .eq("course_id", course.id);
+
+    if (progressError) {
+      console.error("Error deleting course progress:", progressError);
+      toast.error("Failed to delete course");
+      setDeletingCourse(false);
+      return;
+    }
+
+    if (moduleIds.length > 0) {
+      const { error: lessonsError } = await supabase
+        .from("lessons")
+        .delete()
+        .in("module_id", moduleIds);
+
+      if (lessonsError) {
+        console.error("Error deleting lessons:", lessonsError);
+        toast.error("Failed to delete course");
+        setDeletingCourse(false);
+        return;
+      }
+    }
+
+    const { error: modulesError } = await supabase
+      .from("course_modules")
+      .delete()
+      .eq("course_id", course.id);
+
+    if (modulesError) {
+      console.error("Error deleting modules:", modulesError);
+      toast.error("Failed to delete course");
+      setDeletingCourse(false);
+      return;
+    }
+
+    const { error: courseError } = await supabase
+      .from("courses")
+      .delete()
+      .eq("id", course.id);
+
+    setDeletingCourse(false);
+
+    if (courseError) {
+      console.error("Error deleting course:", courseError);
+      toast.error("Failed to delete course");
+      return;
+    }
+
+    toast.success("Course deleted successfully!");
+    setDeleteCourseOpen(false);
+    navigate("/learning");
   };
 
   if (loading) {
@@ -253,7 +396,6 @@ const CourseDetail = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        {/* Course Header */}
         <div className="border-b border-border/50 bg-card/50">
           <div className="container max-w-7xl mx-auto px-4 py-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
@@ -265,14 +407,14 @@ const CourseDetail = () => {
                 Back to Courses
               </Link>
             </div>
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div className="flex items-start gap-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
                 <div className="p-3 rounded-xl bg-primary/10 hidden sm:block">
                   <Icon className="h-8 w-8 text-primary" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-2">
-                    <h1 className="font-display text-2xl font-bold">
+                    <h1 className="font-display text-2xl font-bold break-words">
                       {course.title}
                     </h1>
                     <Badge
@@ -284,8 +426,8 @@ const CourseDetail = () => {
                   </div>
                   <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {course.duration || "TBD"}
+                      <List className="h-4 w-4" />
+                      {modules.length} modules
                     </span>
                     <span className="flex items-center gap-1">
                       <BookOpen className="h-4 w-4" />
@@ -302,24 +444,64 @@ const CourseDetail = () => {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center justify-end gap-3 xl:max-w-[48%]">
                 {isAdmin && (
-                  <CreateLessonDialog
-                    modules={modules}
-                    courseId={course.id}
-                    onLessonCreated={fetchCourseData}
-                  />
+                  <>
+                    <AlertDialog
+                      open={deleteCourseOpen}
+                      onOpenChange={setDeleteCourseOpen}
+                    >
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Course
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete course?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Delete course "{course.title}" and all its modules,
+                            lessons, and progress records? This action cannot be
+                            undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={deletingCourse}>
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={handleDeleteCourse}
+                            disabled={deletingCourse}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            {deletingCourse && (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            )}
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    <CreateLessonDialog
+                      modules={modules}
+                      courseId={course.id}
+                      onLessonCreated={fetchCourseData}
+                    />
+                  </>
                 )}
-                <div className="text-right hidden sm:block">
-                  <div className="text-sm text-muted-foreground mb-1">
-                    Your Progress
+                <div className="hidden min-w-0 items-center gap-3 sm:flex">
+                  <div className="text-right">
+                    <div className="text-sm text-muted-foreground mb-1">
+                      Your Progress
+                    </div>
+                    <div className="text-lg font-bold text-primary whitespace-nowrap">
+                      {progressPercent}% Complete
+                    </div>
                   </div>
-                  <div className="text-lg font-bold text-primary">
-                    {progressPercent}% Complete
+                  <div className="w-24 shrink-0">
+                    <Progress value={progressPercent} className="h-2" />
                   </div>
-                </div>
-                <div className="w-24">
-                  <Progress value={progressPercent} className="h-2" />
                 </div>
                 {progressPercent === 100 && (
                   <Button
@@ -335,7 +517,6 @@ const CourseDetail = () => {
           </div>
         </div>
 
-        {/* Certificate Modal */}
         <Certificate
           isOpen={showCertificate}
           onClose={() => setShowCertificate(false)}
@@ -353,7 +534,47 @@ const CourseDetail = () => {
           instructorName={course.instructor_name || "Instructor"}
         />
 
-        {/* Main Content */}
+        <AlertDialog
+          open={Boolean(moduleToDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingModuleId) {
+              setModuleToDelete(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove module?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {moduleToDelete
+                  ? `Remove "${moduleToDelete.title}" and all of its lessons? This action cannot be undone.`
+                  : "This action cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingModuleId)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!moduleToDelete || Boolean(deletingModuleId)}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (!moduleToDelete) return;
+
+                  handleRemoveModule(moduleToDelete);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingModuleId && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <div className="container max-w-7xl mx-auto px-4 py-6">
           {allLessons.length === 0 ? (
             <div className="glass-card p-12 text-center">
@@ -372,146 +593,178 @@ const CourseDetail = () => {
             </div>
           ) : (
             <div className="flex gap-6">
-              {/* Video & Content Area */}
               <div
                 className={cn(
                   "flex-1 space-y-6",
                   showSidebar ? "lg:mr-80" : "",
                 )}
               >
-                {/* Video Player */}
-                {/* <VideoPlayer videoUrl={currentLesson?.video_url} /> */}
+                {modules.map((module, moduleIndex) => (
+                  <section key={module.id} className="space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border/60" />
+                      <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Module {moduleIndex + 1}: {module.title}
+                      </h2>
+                      <div className="h-px flex-1 bg-border/60" />
+                    </div>
 
-                {/* Lesson Navigation */}
-                {/* <div className="flex items-center justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={goToPrevLesson}
-                    disabled={currentLessonIndex === 0}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Previous
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="lg:hidden"
-                      onClick={() => setShowSidebar(!showSidebar)}
-                    >
-                      <List className="h-5 w-5" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Lesson {currentLessonIndex + 1} of {allLessons.length}
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={goToNextLesson}
-                    disabled={currentLessonIndex === allLessons.length - 1}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div> */}
+                    {module.lessons.map((lesson, lessonIndex) => {
+                      const isCompleted = completedLessons.includes(lesson.id);
 
-                {/* Lesson Content */}
-                <div className="glass-card p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-display text-xl font-semibold">
-                      {currentLesson?.title}
-                    </h2>
-                    <Button
-                      variant={
-                        completedLessons.includes(currentLesson?.id || "")
-                          ? "secondary"
-                          : "outline"
-                      }
-                      size="sm"
-                      onClick={markLessonComplete}
-                      disabled={completedLessons.includes(
-                        currentLesson?.id || "",
-                      )}
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      {completedLessons.includes(currentLesson?.id || "")
-                        ? "Completed"
-                        : "Mark Complete"}
-                    </Button>
-                  </div>
-                  <div className="prose prose-invert max-w-none">
-                    {currentLesson?.content?.split("\n").map((line, i) => {
-                      if (line.startsWith("## ")) {
-                        return (
-                          <h3
-                            key={i}
-                            className="text-lg font-semibold mt-6 mb-3"
-                          >
-                            {line.replace("## ", "")}
-                          </h3>
-                        );
-                      }
-                      if (line.startsWith("- ")) {
-                        return (
-                          <li key={i} className="text-muted-foreground ml-4">
-                            {line.replace("- ", "")}
-                          </li>
-                        );
-                      }
-                      if (line.startsWith("```")) {
-                        return null;
-                      }
-                      if (line.trim() === "") {
-                        return <br key={i} />;
-                      }
                       return (
-                        <p key={i} className="text-muted-foreground mb-2">
-                          {line}
-                        </p>
+                        <div
+                          key={lesson.id}
+                          ref={(node) => {
+                            lessonSectionRefs.current[lesson.id] = node;
+                          }}
+                          className={cn(
+                            "scroll-mt-28 rounded-2xl border border-slate-200 bg-card p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-[#131a24] dark:shadow-[0_22px_80px_rgba(2,8,20,0.4)]",
+                            currentLessonId === lesson.id &&
+                              "ring-1 ring-cyan-400/40",
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-4 gap-4">
+                            <div className="flex items-center gap-3">
+                              <span className="rounded-md bg-cyan-500/15 px-2 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                                {moduleIndex + 1}.{lessonIndex + 1}
+                              </span>
+                              <h3 className="font-display text-xl font-semibold text-foreground dark:text-slate-50">
+                                {lesson.title}
+                              </h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isAdmin && (
+                                <Button
+                                  variant="destructive"
+                                  onClick={() => setModuleToDelete(module)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Remove Module
+                                </Button>
+                              )}
+                              {isAdmin && (
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingLessonId(lesson.id);
+                                    setEditingContent(lesson.content || "");
+                                  }}
+                                >
+                                  <Edit2 className="h-4 w-4 mr-2" />
+                                  Edit Lesson
+                                </Button>
+                              )}
+                              <Button
+                                variant={isCompleted ? "secondary" : "outline"}
+                                size="sm"
+                                onClick={() => markLessonComplete(lesson.id)}
+                                disabled={isCompleted}
+                                className={cn(
+                                  "border-slate-300 bg-background text-foreground hover:bg-slate-100 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white",
+                                  isCompleted &&
+                                    "border-emerald-400/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+                                )}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                {isCompleted ? "Completed" : "Mark Complete"}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {editingLessonId === lesson.id ? (
+                            <div className="space-y-4">
+                              <RichTextEditor
+                                value={editingContent}
+                                onChange={setEditingContent}
+                              />
+
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingLessonId(null);
+                                    setEditingContent("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+
+                                <Button
+                                  disabled={savingLessonId === lesson.id}
+                                  onClick={async () => {
+                                    setSavingLessonId(lesson.id);
+
+                                    const { error } = await supabase
+                                      .from("lessons")
+                                      .update({ content: editingContent })
+                                      .eq("id", lesson.id);
+
+                                    setSavingLessonId(null);
+
+                                    if (error) {
+                                      toast.error("Failed to save lesson");
+                                      return;
+                                    }
+
+                                    toast.success("Lesson saved");
+                                    setEditingLessonId(null);
+                                    fetchCourseData(lesson.id);
+                                  }}
+                                >
+                                  {savingLessonId === lesson.id
+                                    ? "Saving..."
+                                    : "Save Lesson"}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <LessonContent content={lesson.content} />
+                          )}
+
+                          {lesson.quiz && lesson.quiz.length > 0 && (
+                            <div className="mt-8 space-y-4">
+                              <h4 className="font-display text-lg font-semibold flex items-center gap-2">
+                                <HelpCircle className="h-5 w-5 text-primary" />
+                                Knowledge Check
+                              </h4>
+                              <Quiz
+                                questions={lesson.quiz}
+                                onComplete={(score, total) => {
+                                  toast.success(
+                                    `Quiz completed! You scored ${score}/${total}`,
+                                  );
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {lesson.challenge && (
+                            <div className="mt-8 space-y-4">
+                              <h4 className="font-display text-lg font-semibold flex items-center gap-2">
+                                <Code className="h-5 w-5 text-primary" />
+                                Coding Challenge
+                              </h4>
+                              <CodingChallenge
+                                challenge={lesson.challenge}
+                                lessonId={lesson.id}
+                                onComplete={(passed) => {
+                                  if (passed) {
+                                    toast.success(
+                                      "Challenge completed! Great job!",
+                                    );
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
-                  </div>
-                </div>
-
-                {/* Quiz Section */}
-                {currentLesson?.quiz && currentLesson.quiz.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="font-display text-lg font-semibold flex items-center gap-2">
-                      <HelpCircle className="h-5 w-5 text-primary" />
-                      Knowledge Check
-                    </h3>
-                    <Quiz
-                      questions={currentLesson.quiz}
-                      onComplete={(score, total) => {
-                        toast.success(
-                          `Quiz completed! You scored ${score}/${total}`,
-                        );
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Coding Challenge Section */}
-                {currentLesson?.challenge && (
-                  <div className="space-y-4">
-                    <h3 className="font-display text-lg font-semibold flex items-center gap-2">
-                      <Code className="h-5 w-5 text-primary" />
-                      Coding Challenge
-                    </h3>
-                    <CodingChallenge
-                      challenge={currentLesson.challenge}
-                      lessonId={currentLesson.id}
-                      onComplete={(passed) => {
-                        if (passed) {
-                          toast.success("Challenge completed! Great job!");
-                        }
-                      }}
-                    />
-                  </div>
-                )}
+                  </section>
+                ))}
               </div>
 
-              {/* Sidebar - Lesson List */}
               {showSidebar && (
                 <div className="hidden lg:block fixed right-4 top-[140px] bottom-4 w-80">
                   <div className="glass-card h-full flex flex-col">
@@ -545,19 +798,21 @@ const CourseDetail = () => {
                                   return (
                                     <button
                                       key={lesson.id}
-                                      onClick={() =>
-                                        setCurrentLessonId(lesson.id)
-                                      }
+                                      ref={(node) => {
+                                        lessonItemRefs.current[lesson.id] =
+                                          node;
+                                      }}
+                                      onClick={() => scrollToLesson(lesson.id)}
                                       className={cn(
                                         "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors",
-                                        currentLesson?.id === lesson.id
+                                        currentLessonId === lesson.id
                                           ? "bg-primary/10 text-primary"
                                           : "hover:bg-secondary/50",
                                       )}
                                     >
                                       {isCompleted ? (
                                         <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                                      ) : currentLesson?.id === lesson.id ? (
+                                      ) : currentLessonId === lesson.id ? (
                                         <PlayCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                                       ) : (
                                         <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -571,9 +826,6 @@ const CourseDetail = () => {
                                           )}
                                         >
                                           {lesson.title}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {lesson.duration || "—"}
                                         </p>
                                       </div>
                                     </button>
