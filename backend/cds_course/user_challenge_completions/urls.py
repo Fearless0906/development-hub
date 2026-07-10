@@ -1,0 +1,3 @@
+from core.routing import crud_urlpatterns
+from .views import UserChallengeCompletionDetailView, UserChallengeCompletionListCreateView
+urlpatterns = crud_urlpatterns(UserChallengeCompletionListCreateView, UserChallengeCompletionDetailView, "user-challenge-completions")
