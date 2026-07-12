@@ -52,12 +52,14 @@ interface CreateLessonDialogProps {
   modules: CourseModule[];
   courseId: string;
   onLessonCreated: (lessonId?: string) => void;
+  iconOnly?: boolean;
 }
 
 export const CreateLessonDialog = ({
   modules,
   courseId,
   onLessonCreated,
+  iconOnly = false,
 }: CreateLessonDialogProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -464,9 +466,15 @@ export const CreateLessonDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Lesson
+        <Button
+          variant="outline"
+          size={iconOnly ? "icon" : "sm"}
+          aria-label="Add lesson"
+          title="Add lesson"
+          className={iconOnly ? "h-9 w-9" : undefined}
+        >
+          <Plus className={iconOnly ? "h-4 w-4" : "h-4 w-4 mr-2"} />
+          {!iconOnly && "Add Lesson"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

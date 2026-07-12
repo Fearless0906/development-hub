@@ -17,6 +17,7 @@ import {
   API_ENDPOINTS,
   API_URL,
   AUTH_EXPIRED_EVENT,
+  getOAuthRedirectUrl,
 } from "@/integrations/django/api";
 
 import { toast } from "sonner";
@@ -172,12 +173,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         signInWithGoogle: () =>
           signInWithOAuth("google", {
-            redirectTo: `${window.location.origin}/auth/callback/google`,
+            redirectTo: getOAuthRedirectUrl("google"),
           }),
 
         signInWithGitHub: () =>
           signInWithOAuth("github", {
-            redirectTo: `${window.location.origin}/auth/callback/github`,
+            redirectTo: getOAuthRedirectUrl("github"),
           }),
 
         signOut,

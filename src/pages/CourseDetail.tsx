@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   useParams,
   Link,
@@ -39,6 +41,8 @@ import {
   Target,
   FolderKanban,
   UserRound,
+  Download,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -108,6 +112,8 @@ const iconMap: Record<string, React.ElementType> = {
   Lock,
   BookOpen,
 };
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 type CourseReview = {
   id: string;
@@ -193,6 +199,8 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   const [certificateRecord, setCertificateRecord] =
     useState<CourseCertificateRecord | null>(null);
   const [issuingCertificate, setIssuingCertificate] = useState(false);
+  const [importingPdf, setImportingPdf] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchCourseData = async (targetLessonId?: string) => {
     if (!courseId) return;
@@ -407,6 +415,198 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
     () => modules.flatMap((m) => m.lessons),
     [modules],
   );
+
+  const handleExportPdf = () => {
+    if (!course) return;
+
+    const escapeHtml = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const moduleHtml = modules
+      .map(
+        (module, moduleIndex) => `
+          <section class="module">
+            <h2>Module ${moduleIndex + 1}: ${escapeHtml(module.title)}</h2>
+            ${module.lessons
+              .map(
+                (lesson, lessonIndex) => `
+                  <section class="lesson">
+                    <h3>${moduleIndex + 1}.${lessonIndex + 1} ${escapeHtml(lesson.title)}</h3>
+                    ${lesson.duration ? `<p class="duration">Duration: ${escapeHtml(lesson.duration)}</p>` : ""}
+                    <div class="content">${lesson.content || '<p class="empty">No written lesson content.</p>'}</div>
+                  </section>`,
+              )
+              .join("")}
+          </section>`,
+      )
+      .join("");
+
+    const frame = document.createElement("iframe");
+    frame.style.position = "fixed";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    frame.srcdoc = `<!doctype html>
+      <html><head><title>${escapeHtml(course.title)} - Course</title>
+      <style>
+        @page { size: A4; margin: 18mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; color: #111827; background: #fff; font: 11pt/1.6 Arial, sans-serif; }
+        header { padding-bottom: 18px; border-bottom: 2px solid #0f766e; }
+        h1 { margin: 4px 0 8px; font-size: 26pt; line-height: 1.15; }
+        .eyebrow { margin: 0; color: #0f766e; font-size: 9pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+        .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; color: #4b5563; font-size: 9pt; }
+        .module { margin-top: 28px; }
+        .module > h2 { margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid #99f6e4; color: #115e59; font-size: 18pt; }
+        .lesson { margin-top: 20px; }
+        .lesson > h3 { break-after: avoid; margin-bottom: 8px; font-size: 14pt; }
+        .duration, .empty { color: #6b7280; font-size: 9pt; }
+        p { margin: 8px 0; } ul, ol { padding-left: 24px; }
+        pre { padding: 12px; border-radius: 6px; background: #f3f4f6; white-space: pre-wrap; overflow-wrap: anywhere; }
+        code { font-family: ui-monospace, monospace; }
+        blockquote { margin-left: 0; padding: 8px 14px; border-left: 4px solid #f59e0b; background: #fffbeb; }
+        table { width: 100%; border-collapse: collapse; } th, td { padding: 6px; border: 1px solid #d1d5db; text-align: left; }
+        img { max-width: 100%; height: auto; }
+        pre, blockquote, table, img { break-inside: avoid; }
+      </style></head><body>
+        <header>
+          <p class="eyebrow">CDS Crash Course</p>
+          <h1>${escapeHtml(course.title)}</h1>
+          ${course.description ? `<p>${escapeHtml(course.description)}</p>` : ""}
+          <div class="meta">
+            <span>${course.level}</span><span>${modules.length} modules</span>
+            <span>${allLessons.length} lessons</span>
+            ${course.instructor_name ? `<span>By ${escapeHtml(course.instructor_name)}</span>` : ""}
+          </div>
+        </header>${moduleHtml}
+      </body></html>`;
+    document.body.appendChild(frame);
+    frame.onload = () => {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+      window.setTimeout(() => frame.remove(), 1000);
+    };
+  };
+
+  const handleImportPdf = async (file: File) => {
+    if (!course || !isAdmin) return;
+    setImportingPdf(true);
+
+    try {
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      const lines: { text: string; size: number }[] = [];
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const pageLines = new Map<number, { parts: { x: number; text: string }[]; size: number }>();
+
+        for (const rawItem of content.items) {
+          if (!("str" in rawItem) || !rawItem.str.trim()) continue;
+          const y = Math.round(rawItem.transform[5]);
+          const existing = pageLines.get(y) || { parts: [], size: 0 };
+          existing.parts.push({ x: rawItem.transform[4], text: rawItem.str });
+          existing.size = Math.max(existing.size, rawItem.height || Math.abs(rawItem.transform[3]));
+          pageLines.set(y, existing);
+        }
+
+        [...pageLines.entries()]
+          .sort(([firstY], [secondY]) => secondY - firstY)
+          .forEach(([, line]) => {
+            const text = line.parts
+              .sort((first, second) => first.x - second.x)
+              .map((part) => part.text)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (
+              text &&
+              !/^\d+ of \d+$/.test(text) &&
+              !/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text) &&
+              !text.startsWith(`${course.title} - Course`)
+            ) {
+              lines.push({ text, size: line.size });
+            }
+          });
+      }
+
+      type ImportedLesson = { title: string; lines: string[] };
+      type ImportedModule = { title: string; lessons: ImportedLesson[] };
+      const importedModules: ImportedModule[] = [];
+      let currentModule: ImportedModule | null = null;
+      let currentLesson: ImportedLesson | null = null;
+
+      for (const line of lines) {
+        const moduleMatch = line.text.match(/^Module\s+\d+\s*:\s*(.+)$/i);
+        if (moduleMatch && line.size >= 16) {
+          currentModule = { title: moduleMatch[1].trim(), lessons: [] };
+          importedModules.push(currentModule);
+          currentLesson = null;
+          continue;
+        }
+
+        const lessonMatch = line.text.match(/^\d+\.\d+\s+(.+)$/);
+        if (lessonMatch && currentModule && line.size >= 13 && line.size < 16) {
+          currentLesson = { title: lessonMatch[1].trim(), lines: [] };
+          currentModule.lessons.push(currentLesson);
+          continue;
+        }
+
+        if (currentLesson) currentLesson.lines.push(line.text);
+      }
+
+      const validModules = importedModules.filter((module) => module.lessons.length > 0);
+      if (validModules.length === 0) {
+        toast.error("No modules and lessons were found in this PDF format");
+        return;
+      }
+
+      for (let moduleIndex = 0; moduleIndex < validModules.length; moduleIndex += 1) {
+        const importedModule = validModules[moduleIndex];
+        const { data: createdModule, error: moduleError } = await api
+          .from("course_modules")
+          .insert({
+            course_id: course.id,
+            title: importedModule.title,
+            order_index: modules.length + moduleIndex,
+            is_published: true,
+          })
+          .select()
+          .single();
+        if (moduleError || !createdModule) throw moduleError || new Error("Module import failed");
+
+        for (let lessonIndex = 0; lessonIndex < importedModule.lessons.length; lessonIndex += 1) {
+          const importedLesson = importedModule.lessons[lessonIndex];
+          const content = importedLesson.lines
+            .filter(Boolean)
+            .map((text) => `<p>${text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</p>`)
+            .join("");
+          const { error: lessonError } = await api.from("lessons").insert({
+            module_id: createdModule.id,
+            title: importedLesson.title,
+            content,
+            order_index: lessonIndex,
+            is_published: true,
+          });
+          if (lessonError) throw lessonError;
+        }
+      }
+
+      toast.success(`Imported ${validModules.length} module${validModules.length === 1 ? "" : "s"} from PDF`);
+      await fetchCourseData();
+    } catch (error) {
+      console.error("Error importing PDF:", error);
+      toast.error("Failed to import PDF");
+    } finally {
+      setImportingPdf(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  };
 
   const currentLesson = useMemo(
     () => allLessons.find((lesson) => lesson.id === currentLessonId) || null,
@@ -1326,14 +1526,54 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
               <div className="flex flex-wrap items-center justify-end gap-3 xl:max-w-[48%]">
                 {isAdmin && (
                   <>
+                    <input
+                      ref={pdfInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void handleImportPdf(file);
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      disabled={importingPdf}
+                      onClick={() => pdfInputRef.current?.click()}
+                      aria-label="Import PDF"
+                      title="Import PDF"
+                      className="h-9 w-9"
+                    >
+                      {importingPdf ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleExportPdf}
+                      aria-label="Export PDF"
+                      title="Export PDF"
+                      className="h-9 w-9"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
                     <AlertDialog
                       open={deleteCourseOpen}
                       onOpenChange={setDeleteCourseOpen}
                     >
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Course
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          aria-label="Delete course"
+                          title="Delete course"
+                          className="h-9 w-9"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -1366,6 +1606,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                       modules={modules}
                       courseId={course.id}
                       onLessonCreated={fetchCourseData}
+                      iconOnly
                     />
                   </>
                 )}

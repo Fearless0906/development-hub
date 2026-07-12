@@ -14,10 +14,8 @@ import {
   HelpCircle, 
   MessageSquare, 
   Code2,
-  Filter,
-  X,
+  BookOpen,
   Check,
-  ArrowUpDown
 } from "lucide-react";
 
 interface QuestionResult {
@@ -85,8 +83,30 @@ interface SnippetResult {
   }>;
 }
 
-type SearchResult = QuestionResult | AnswerResult | SnippetResult;
-type ContentType = "all" | "questions" | "answers" | "snippets";
+interface CourseResult {
+  type: "course";
+  id: string;
+  title: string;
+  description: string | null;
+  slug: string;
+  level: string;
+  created_at: string;
+  votes_count: number;
+}
+
+interface LessonResult {
+  type: "lesson";
+  id: string;
+  title: string;
+  content: string | null;
+  courseSlug: string;
+  moduleTitle: string;
+  created_at: string;
+  votes_count: number;
+}
+
+type SearchResult = QuestionResult | AnswerResult | SnippetResult | CourseResult | LessonResult;
+type ContentType = "all" | "courses" | "lessons" | "questions" | "answers" | "snippets";
 type SortOption = "relevance" | "newest" | "votes";
 
 const Search = () => {
@@ -123,7 +143,7 @@ const Search = () => {
             profiles!questions_user_id_fkey (id, username, avatar_url),
             question_tags (tags (id, name, color))
           `)
-          .or(`title.ilike.${searchTerm},content.ilike.${searchTerm}`)
+          .ilike("title", searchTerm)
           .order(sortBy === "newest" ? "created_at" : "votes_count", { ascending: false })
           .limit(20);
 
@@ -160,12 +180,56 @@ const Search = () => {
             snippet_tags (tags (id, name, color))
           `)
           .eq("is_public", true)
-          .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
+          .ilike("title", searchTerm)
           .order(sortBy === "newest" ? "created_at" : "votes_count", { ascending: false })
           .limit(20);
 
         snippets?.forEach((s) => {
           allResults.push({ ...s, type: "snippet" } as SnippetResult);
+        });
+      }
+
+      if (contentType === "all" || contentType === "courses") {
+        const { data: courses } = await api
+          .from("courses")
+          .select("id, title, description, slug, level, created_at")
+          .ilike("title", searchTerm)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        courses?.forEach((course) => {
+          allResults.push({ ...course, votes_count: 0, type: "course" } as CourseResult);
+        });
+      }
+
+      if (contentType === "all" || contentType === "lessons") {
+        const { data: lessons } = await api
+          .from("lessons")
+          .select("id, title, content, module_id")
+          .ilike("title", searchTerm)
+          .limit(20);
+        const moduleIds = [...new Set((lessons || []).map((lesson) => lesson.module_id))];
+        const { data: courseModules } = moduleIds.length
+          ? await api.from("course_modules").select("id, title, course_id").in("id", moduleIds)
+          : { data: [] as any[] };
+        const courseIds = [...new Set((courseModules || []).map((module) => module.course_id))];
+        const { data: lessonCourses } = courseIds.length
+          ? await api.from("courses").select("id, slug").in("id", courseIds)
+          : { data: [] as any[] };
+
+        lessons?.forEach((lesson) => {
+          const module = courseModules?.find((item) => item.id === lesson.module_id);
+          const lessonCourse = lessonCourses?.find((item) => item.id === module?.course_id);
+          if (module && lessonCourse) {
+            allResults.push({
+              ...lesson,
+              type: "lesson",
+              moduleTitle: module.title,
+              courseSlug: lessonCourse.slug,
+              created_at: "",
+              votes_count: 0,
+            } as LessonResult);
+          }
         });
       }
 
@@ -229,6 +293,8 @@ const Search = () => {
 
   const contentTypes: { value: ContentType; label: string; icon: React.ReactNode }[] = [
     { value: "all", label: "All", icon: null },
+    { value: "courses", label: "Courses", icon: <BookOpen className="h-4 w-4" /> },
+    { value: "lessons", label: "Lessons", icon: <BookOpen className="h-4 w-4" /> },
     { value: "questions", label: "Questions", icon: <HelpCircle className="h-4 w-4" /> },
     { value: "answers", label: "Answers", icon: <MessageSquare className="h-4 w-4" /> },
     { value: "snippets", label: "Snippets", icon: <Code2 className="h-4 w-4" /> },
@@ -246,7 +312,7 @@ const Search = () => {
               Search
             </h1>
             <p className="text-muted-foreground">
-              Find questions, answers, and code snippets
+              Find courses, questions, answers, and code snippets
             </p>
           </div>
 
@@ -323,7 +389,7 @@ const Search = () => {
                 Start searching
               </h3>
               <p className="text-muted-foreground">
-                Enter a search term to find questions, answers, and code snippets
+                Enter a search term to search all content
               </p>
             </div>
           ) : results.length === 0 ? (
@@ -352,6 +418,12 @@ const Search = () => {
                   )}
                   {result.type === "snippet" && (
                     <SnippetResultCard result={result} query={query} highlightText={highlightText} truncateText={truncateText} getInitials={getInitials} />
+                  )}
+                  {result.type === "course" && (
+                    <CourseResultCard result={result} query={query} highlightText={highlightText} truncateText={truncateText} />
+                  )}
+                  {result.type === "lesson" && (
+                    <LessonResultCard result={result} query={query} highlightText={highlightText} truncateText={truncateText} />
                   )}
                 </div>
               ))}
@@ -529,6 +601,54 @@ const SnippetResultCard = ({
         <span>• {formatDistanceToNow(new Date(result.created_at), { addSuffix: true })}</span>
       </div>
     </div>
+  </div>
+);
+
+const CourseResultCard = ({ result, query, highlightText, truncateText }: {
+  result: CourseResult;
+  query: string;
+  highlightText: (text: string, query: string) => React.ReactNode;
+  truncateText: (text: string, maxLength?: number) => string;
+}) => (
+  <div>
+    <div className="mb-2 flex items-center gap-2">
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-500">
+        <BookOpen className="h-3 w-3" /> Course
+      </span>
+      <span className="text-xs text-muted-foreground">{result.level}</span>
+    </div>
+    <Link to={`/learning/${result.slug}`} className="mb-2 block font-display text-lg font-semibold text-foreground transition-colors hover:text-primary">
+      {highlightText(result.title, query)}
+    </Link>
+    {result.description && (
+      <p className="line-clamp-2 text-sm text-muted-foreground">
+        {highlightText(truncateText(result.description), query)}
+      </p>
+    )}
+  </div>
+);
+
+const LessonResultCard = ({ result, query, highlightText, truncateText }: {
+  result: LessonResult;
+  query: string;
+  highlightText: (text: string, query: string) => React.ReactNode;
+  truncateText: (text: string, maxLength?: number) => string;
+}) => (
+  <div>
+    <div className="mb-2 flex items-center gap-2">
+      <span className="inline-flex items-center gap-1 rounded-md bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-500">
+        <BookOpen className="h-3 w-3" /> Lesson
+      </span>
+      <span className="text-xs text-muted-foreground">{result.moduleTitle}</span>
+    </div>
+    <Link to={`/learning/${result.courseSlug}?lesson=${result.id}`} className="mb-2 block font-display text-lg font-semibold text-foreground transition-colors hover:text-primary">
+      {highlightText(result.title, query)}
+    </Link>
+    {result.content && (
+      <p className="line-clamp-2 text-sm text-muted-foreground">
+        {highlightText(truncateText(result.content.replace(/<[^>]*>/g, " ")), query)}
+      </p>
+    )}
   </div>
 );
 

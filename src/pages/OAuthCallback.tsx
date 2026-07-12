@@ -3,7 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { api, type OAuthProvider } from "@/integrations/django/api";
+import {
+  api,
+  getOAuthRedirectUrl,
+  type OAuthProvider,
+} from "@/integrations/django/api";
 
 const isOAuthProvider = (value: string | undefined): value is OAuthProvider => {
   return value === "google" || value === "github";
@@ -44,7 +48,7 @@ const OAuthCallback = () => {
         return;
       }
 
-      const redirectTo = `${window.location.origin}/auth/callback/${provider}`;
+      const redirectTo = getOAuthRedirectUrl(provider);
 
       const { error } = await api.auth.exchangeOAuthCode({
         provider,

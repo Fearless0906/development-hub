@@ -26,6 +26,12 @@ type ApiResult<T = unknown> = {
 type Filter = { type: "eq" | "in" | "ilike"; field: string; value: unknown };
 export type OAuthProvider = "google" | "github";
 
+export const getOAuthRedirectUrl = (provider: OAuthProvider) => {
+  const configuredOrigin = import.meta.env.VITE_OAUTH_REDIRECT_ORIGIN?.trim();
+  const origin = (configuredOrigin || window.location.origin).replace(/\/$/, "");
+  return `${origin}/auth/callback/${provider}`;
+};
+
 export const API_ENDPOINTS = {
   profiles: "accounts/auth/users",
   user_roles: "user-roles",

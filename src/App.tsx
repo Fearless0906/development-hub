@@ -22,10 +22,6 @@ import CourseDetail from "./pages/CourseDetail";
 import Playground from "./pages/Playground";
 import NotFound from "./pages/NotFound";
 import OAuthCallback from "./pages/OAuthCallback";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminLearning from "./pages/AdminLearning";
-import AdminCourseDetail from "./pages/AdminCourseDetail";
-import AdminQuiz from "./pages/AdminQuiz";
 import Quiz from "./pages/Quiz";
 
 const queryClient = new QueryClient();
@@ -46,13 +42,6 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/learning" element={<AdminLearning />} />
-              <Route
-                path="/admin/learning/:courseId"
-                element={<AdminCourseDetail />}
-              />
-              <Route path="/admin/quizzes" element={<AdminQuiz />} />
               <Route path="/questions" element={<QA />} />
               <Route path="/questions/:id" element={<QuestionDetail />} />
               <Route path="/ask" element={<AskQuestion />} />

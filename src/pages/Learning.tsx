@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { CreateCourseDialog } from "@/components/learning/CreateCourseDialog";
 import { Course, UserCourseProgress } from "@/types/learning";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -121,6 +123,7 @@ const Learning = () => {
   const [courses, setCourses] = useState<CourseWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { isAdmin } = useIsAdmin();
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -208,6 +211,11 @@ const Learning = () => {
               Structured courses designed by industry experts. Learn at your own pace
               with hands-on projects and real-world examples.
             </p>
+            {isAdmin && (
+              <div className="mt-6 flex justify-center">
+                <CreateCourseDialog onCourseCreated={fetchCourses} />
+              </div>
+            )}
           </div>
 
           {/* Stats */}
@@ -252,6 +260,11 @@ const Learning = () => {
                       ? "Start a course to see your progress here"
                       : "No courses available for this filter"}
                   </p>
+                  {isAdmin && activeTab === "all" && (
+                    <div className="mt-4 flex justify-center">
+                      <CreateCourseDialog onCourseCreated={fetchCourses} />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

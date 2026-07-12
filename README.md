@@ -60,6 +60,17 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## GitHub sign-in setup
+
+Create or edit the GitHub OAuth App used by `GITHUB_OAUTH_CLIENT_ID`, then set:
+
+- Homepage URL: `http://localhost:8080`
+- Authorization callback URL: `http://localhost:8080/auth/callback/github`
+
+The callback must exactly match `VITE_OAUTH_REDIRECT_ORIGIN` plus
+`/auth/callback/github`. Restart both the Vite and Django development servers
+after changing OAuth environment variables.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Bookmark, Code2, LogOut, Search, Shield, User } from "lucide-react";
+import { Bookmark, Code2, LogOut, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -52,6 +52,9 @@ export const Navbar = () => {
   const { isAdmin } = useIsAdmin();
   const location = useLocation();
   const navigate = useNavigate();
+  const visibleNavLinks = navLinks.filter(
+    (link) => link.href !== "/quiz" || isAdmin,
+  );
   const closeMobileMenu = () => setMobileMenuOpen(false);
   const initials = (user?.email || "U").slice(0, 2).toUpperCase();
 
@@ -93,14 +96,6 @@ export const Navbar = () => {
             Bookmarks
           </Link>
         </DropdownMenuItem>
-        {isAdmin && (
-          <DropdownMenuItem asChild>
-            <Link to="/admin" className="cursor-pointer">
-              <Shield className="mr-2 h-4 w-4" />
-              Admin Dashboard
-            </Link>
-          </DropdownMenuItem>
-        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
           <LogOut className="mr-2 h-4 w-4" />
@@ -120,7 +115,7 @@ export const Navbar = () => {
           aria-label="Primary navigation"
         >
           <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-background/70 p-1 2xl:gap-1">
-            {navLinks.map((link) => {
+            {visibleNavLinks.map((link) => {
               const active =
                 link.href === "/"
                   ? location.pathname === "/"
@@ -182,7 +177,7 @@ export const Navbar = () => {
           onClose={closeMobileMenu}
           className="border border-border bg-background"
         >
-          {navLinks.map((link) => (
+          {visibleNavLinks.map((link) => (
             <Link
               key={link.name}
               to={link.href}
