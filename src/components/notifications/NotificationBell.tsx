@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +49,7 @@ export const NotificationBell = () => {
       fetchNotifications();
       
       // Subscribe to realtime notifications
-      const channel = supabase
+      const channel = api
         .channel('notifications')
         .on(
           'postgres_changes',
@@ -68,7 +68,7 @@ export const NotificationBell = () => {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        api.removeChannel(channel);
       };
     }
   }, [user]);
@@ -78,7 +78,7 @@ export const NotificationBell = () => {
     
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("notifications")
         .select(`
           *,
@@ -104,7 +104,7 @@ export const NotificationBell = () => {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await supabase
+      await api
         .from("notifications")
         .update({ is_read: true })
         .eq("id", notificationId);
@@ -122,7 +122,7 @@ export const NotificationBell = () => {
     if (!user) return;
     
     try {
-      await supabase
+      await api
         .from("notifications")
         .update({ is_read: true })
         .eq("user_id", user.id)

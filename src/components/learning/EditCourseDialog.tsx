@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Pencil } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 import { Course } from "@/types/learning";
 
@@ -62,7 +62,7 @@ export const EditCourseDialog = ({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
 
-    const { error } = await supabase
+    const { error } = await api
       .from("courses")
       .update({
         title: formData.title,

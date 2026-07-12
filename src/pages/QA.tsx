@@ -6,7 +6,7 @@ import { QuestionCard } from "@/components/qa/QuestionCard";
 import { TagBadge } from "@/components/qa/TagBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Search, Plus, TrendingUp, Clock, MessageSquare, Filter, Loader2 } from "lucide-react";
 
@@ -79,7 +79,7 @@ const QA = () => {
   const fetchQuestions = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = api
         .from("questions")
         .select(`
           *,
@@ -100,13 +100,13 @@ const QA = () => {
 
       // Apply tag filter
       if (selectedTags.length > 0) {
-        const { data: tagIds } = await supabase
+        const { data: tagIds } = await api
           .from("tags")
           .select("id")
           .in("slug", selectedTags);
         
         if (tagIds && tagIds.length > 0) {
-          const { data: questionIds } = await supabase
+          const { data: questionIds } = await api
             .from("question_tags")
             .select("question_id")
             .in("tag_id", tagIds.map(t => t.id));
@@ -148,7 +148,7 @@ const QA = () => {
 
   const fetchTags = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("tags")
         .select("*")
         .order("usage_count", { ascending: false })
@@ -165,7 +165,7 @@ const QA = () => {
     if (!user || questions.length === 0) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("votes")
         .select("voteable_id, value")
         .eq("user_id", user.id)

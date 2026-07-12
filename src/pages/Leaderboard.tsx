@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { 
   Trophy, 
   Medal, 
@@ -161,7 +161,7 @@ const Leaderboard = () => {
   const fetchProfiles = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("profiles")
         .select("*")
         .order("reputation", { ascending: false })

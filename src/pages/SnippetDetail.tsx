@@ -7,7 +7,7 @@ import { TagBadge } from "@/components/qa/TagBadge";
 import { CodeBlock } from "@/components/code/CodeBlock";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -98,7 +98,7 @@ const SnippetDetail = () => {
 
   const fetchSnippet = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("code_snippets")
         .select(`
           *,
@@ -125,7 +125,7 @@ const SnippetDetail = () => {
 
       // Fetch forked from info
       if (data.forked_from) {
-        const { data: forked } = await supabase
+        const { data: forked } = await api
           .from("code_snippets")
           .select(`
             id,
@@ -154,7 +154,7 @@ const SnippetDetail = () => {
     if (!user || !snippet) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("votes")
         .select("value")
         .eq("user_id", user.id)
@@ -172,14 +172,14 @@ const SnippetDetail = () => {
   const incrementViews = async () => {
     if (!id) return;
     try {
-      const { data: current } = await supabase
+      const { data: current } = await api
         .from("code_snippets")
         .select("views_count")
         .eq("id", id)
         .single();
       
       if (current) {
-        await supabase
+        await api
           .from("code_snippets")
           .update({ views_count: current.views_count + 1 })
           .eq("id", id);
@@ -201,7 +201,7 @@ const SnippetDetail = () => {
     if (!snippet || !user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await api
         .from("code_snippets")
         .delete()
         .eq("id", snippet.id);

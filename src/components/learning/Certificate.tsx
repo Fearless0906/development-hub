@@ -1,7 +1,12 @@
 import { useRef, useState } from "react";
 import { Download, Share2, Award, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import html2canvas from "html2canvas";
 import { toast } from "sonner";
 
@@ -10,6 +15,8 @@ interface CertificateProps {
   studentName: string;
   completionDate: string;
   instructorName: string;
+  certificateId: string;
+  verificationUrl: string;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -19,6 +26,8 @@ export const Certificate = ({
   studentName,
   completionDate,
   instructorName,
+  certificateId,
+  verificationUrl,
   isOpen,
   onClose,
 }: CertificateProps) => {
@@ -65,10 +74,12 @@ export const Certificate = ({
         }
 
         if (navigator.share && navigator.canShare) {
-          const file = new File([blob], "certificate.png", { type: "image/png" });
+          const file = new File([blob], "certificate.png", {
+            type: "image/png",
+          });
           const shareData = {
             title: `Certificate of Completion - ${courseName}`,
-            text: `I just completed ${courseName} on CDS Crash Course!`,
+            text: `I just completed ${courseName} on CDS Crash Course! Verify: ${verificationUrl}`,
             files: [file],
           };
 
@@ -94,9 +105,6 @@ export const Certificate = ({
       toast.error("Failed to share certificate");
     }
   };
-
-  // Generate a unique certificate ID
-  const certificateId = `CERT-${Date.now().toString(36).toUpperCase()}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -150,12 +158,19 @@ export const Certificate = ({
               <div className="w-24 h-1 bg-gradient-to-r from-transparent via-primary to-transparent mb-8" />
 
               {/* Presented To */}
-              <p className="text-sm text-slate-400 mb-2">This is to certify that</p>
-              <h1 className="text-4xl font-bold text-white mb-4" style={{ fontFamily: "Georgia, serif" }}>
+              <p className="text-sm text-slate-400 mb-2">
+                This is to certify that
+              </p>
+              <h1
+                className="text-4xl font-bold text-white mb-4"
+                style={{ fontFamily: "Georgia, serif" }}
+              >
                 {studentName}
               </h1>
 
-              <p className="text-sm text-slate-400 mb-2">has successfully completed the course</p>
+              <p className="text-sm text-slate-400 mb-2">
+                has successfully completed the course
+              </p>
               <h3 className="text-2xl font-semibold text-primary mb-8">
                 {courseName}
               </h3>
@@ -182,7 +197,7 @@ export const Certificate = ({
 
               {/* Certificate ID */}
               <p className="absolute bottom-6 text-xs text-slate-600">
-                Certificate ID: {certificateId}
+                Certificate ID: {certificateId} | Verify: {verificationUrl}
               </p>
             </div>
           </div>
@@ -197,6 +212,15 @@ export const Certificate = ({
           <Button variant="outline" onClick={handleShare}>
             <Share2 className="h-4 w-4 mr-2" />
             Share
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              navigator.clipboard.writeText(verificationUrl);
+              toast.success("Verification link copied");
+            }}
+          >
+            Copy Verification Link
           </Button>
         </div>
       </DialogContent>

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -19,6 +19,14 @@ import {
 } from "lucide-react";
 import parse, { Element } from "html-react-parser";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -41,6 +49,8 @@ export function RichTextEditor({
   onChange,
   placeholder = "Write lesson content...",
 }: RichTextEditorProps) {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -84,11 +94,38 @@ export function RichTextEditor({
 
   if (!editor) return null;
 
-  const addLink = () => {
-    const url = window.prompt("Enter URL");
-    if (!url) return;
+  const applyToWholeLesson = (
+    style: "fontFamily" | "fontSize",
+    value: string,
+  ) => {
+    const { from, to } = editor.state.selection;
+    const chain = editor.chain().focus().selectAll();
+
+    if (style === "fontFamily") {
+      chain.setFontFamily(value).setTextSelection({ from, to }).run();
+      return;
+    }
+
+    chain.setFontSize(value).setTextSelection({ from, to }).run();
+  };
+
+  const openLinkDialog = () => {
+    setLinkUrl(editor.getAttributes("link").href || "");
+    setLinkDialogOpen(true);
+  };
+
+  const applyLink = () => {
+    const url = linkUrl.trim();
+
+    if (!url) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      setLinkDialogOpen(false);
+      return;
+    }
 
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    setLinkDialogOpen(false);
+    setLinkUrl("");
   };
 
   const tool = (
@@ -107,12 +144,58 @@ export function RichTextEditor({
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-white/5">
-        <Select
-          onValueChange={(font) =>
-            editor.chain().focus().setFontFamily(font).run()
+    <div className="rounded-xl border border-slate-200 dark:border-white/10">
+      <Dialog
+        open={linkDialogOpen}
+        onOpenChange={(open) => {
+          setLinkDialogOpen(open);
+          if (!open) {
+            setLinkUrl("");
           }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Link</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyLink();
+            }}
+          >
+            <div className="space-y-2">
+              <label
+                htmlFor="rich-text-link-url"
+                className="text-sm font-medium text-foreground"
+              >
+                URL
+              </label>
+              <Input
+                id="rich-text-link-url"
+                value={linkUrl}
+                onChange={(event) => setLinkUrl(event.target.value)}
+                autoFocus
+                placeholder="https://example.com"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLinkDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Apply Link</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <div className="sticky top-0 z-20 flex flex-wrap gap-2 rounded-t-xl border-b border-slate-200 bg-slate-50/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-slate-50/85 dark:border-white/10 dark:bg-[#18202c]/95 dark:supports-[backdrop-filter]:bg-[#18202c]/85">
+        <Select
+          onValueChange={(font) => applyToWholeLesson("fontFamily", font)}
         >
           <SelectTrigger className="h-9 w-44">
             <SelectValue placeholder="Font" />
@@ -129,11 +212,7 @@ export function RichTextEditor({
             <SelectItem value="Georgia">Georgia</SelectItem>
           </SelectContent>
         </Select>
-        <Select
-          onValueChange={(size) =>
-            editor.chain().focus().setFontSize(size).run()
-          }
-        >
+        <Select onValueChange={(size) => applyToWholeLesson("fontSize", size)}>
           <SelectTrigger className="h-9 w-24">
             <SelectValue placeholder="Size" />
           </SelectTrigger>
@@ -195,7 +274,7 @@ export function RichTextEditor({
 
         {tool(
           editor.isActive("link"),
-          addLink,
+          openLinkDialog,
           <LinkIcon className="h-4 w-4" />,
         )}
 

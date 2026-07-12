@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 export const useIsAdmin = () => {
@@ -15,8 +15,19 @@ export const useIsAdmin = () => {
         return;
       }
 
+      if (
+        user.is_staff ||
+        user.is_superuser ||
+        user.user_metadata?.is_staff ||
+        user.user_metadata?.is_superuser
+      ) {
+        setIsAdmin(true);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const { data, error } = await supabase
+        const { data, error } = await api
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)

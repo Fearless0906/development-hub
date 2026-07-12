@@ -6,7 +6,7 @@ import { SnippetCard } from "@/components/code/SnippetCard";
 import { TagBadge } from "@/components/qa/TagBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Search, Plus, TrendingUp, Clock, Code2, Filter, Loader2 } from "lucide-react";
 import {
@@ -92,7 +92,7 @@ const Snippets = () => {
   const fetchSnippets = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = api
         .from("code_snippets")
         .select(`
           *,
@@ -118,13 +118,13 @@ const Snippets = () => {
 
       // Apply tag filter
       if (selectedTags.length > 0) {
-        const { data: tagIds } = await supabase
+        const { data: tagIds } = await api
           .from("tags")
           .select("id")
           .in("slug", selectedTags);
         
         if (tagIds && tagIds.length > 0) {
-          const { data: snippetIds } = await supabase
+          const { data: snippetIds } = await api
             .from("snippet_tags")
             .select("snippet_id")
             .in("tag_id", tagIds.map(t => t.id));
@@ -160,7 +160,7 @@ const Snippets = () => {
       // Fetch forked_from titles if needed
       const snippetsWithForks = await Promise.all((data || []).map(async (snippet) => {
         if (snippet.forked_from) {
-          const { data: forkedSnippet } = await supabase
+          const { data: forkedSnippet } = await api
             .from("code_snippets")
             .select("id, title")
             .eq("id", snippet.forked_from)
@@ -180,7 +180,7 @@ const Snippets = () => {
 
   const fetchTags = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("tags")
         .select("*")
         .order("usage_count", { ascending: false })
@@ -197,7 +197,7 @@ const Snippets = () => {
     if (!user || snippets.length === 0) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("votes")
         .select("voteable_id, value")
         .eq("user_id", user.id)

@@ -1,15 +1,35 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+
+import type {
+  AuthSession as Session,
+  AuthUser as User,
+  OAuthProvider,
+} from "@/integrations/django/api";
+
+import {
+  api,
+  API_ENDPOINTS,
+  API_URL,
+  AUTH_EXPIRED_EVENT,
+} from "@/integrations/django/api";
+
 import { toast } from "sonner";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>;
+
+  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+
   signInWithGitHub: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -19,60 +39,96 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
+
   return context;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+
   const [session, setSession] = useState<Session | null>(null);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    let mounted = true;
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const handleExpiredSession = () => {
+      if (!mounted) return;
+
+      setSession(null);
+      setUser(null);
+      setLoading(false);
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+
+    const {
+      data: { subscription },
+    } = api.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    const restoreSession = async () => {
+      try {
+        const { data } = await api.auth.getSession();
+
+        if (!mounted) return;
+
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+      } catch {
+        if (!mounted) return;
+
+        setSession(null);
+        setUser(null);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      mounted = false;
+
+      subscription.unsubscribe();
+
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+    };
   }, []);
 
-  const signUp = async (email: string, password: string, username: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
+  const signUp = async (email: string, password: string) => {
+    const baseName = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
+
+    const username = `${baseName}_${crypto.randomUUID().slice(0, 6)}`;
+
+    const { error } = await api.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
+        emailRedirectTo: `${window.location.origin}/`,
         data: {
-          username: username,
+          username,
         },
       },
     });
 
-    if (error) {
-      return { error };
-    }
-
-    return { error: null };
+    return { error };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await api.auth.signInWithPassword({
       email,
       password,
     });
@@ -80,43 +136,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error };
   };
 
-  const signInWithGitHub = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "github",
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
+  const signInWithOAuth = async (
+    provider: OAuthProvider,
+    options: { redirectTo: string },
+  ) => {
+    const { error } = await api.auth.signInWithOAuth({
+      provider,
+      options,
     });
 
     if (error) {
-      toast.error("Failed to sign in with GitHub");
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
-    });
-
-    if (error) {
-      toast.error("Failed to sign in with Google");
+      toast.error(error.message);
     }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await api.auth.signOut();
+
     if (error) {
-      toast.error("Failed to sign out");
-    } else {
-      toast.success("Signed out successfully");
+      toast.error(error.message || "Failed to sign out");
+      return;
     }
+
+    toast.success("Signed out successfully");
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGitHub, signInWithGoogle, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signUp,
+        signIn,
+
+        signInWithGoogle: () =>
+          signInWithOAuth("google", {
+            redirectTo: `${window.location.origin}/auth/callback/google`,
+          }),
+
+        signInWithGitHub: () =>
+          signInWithOAuth("github", {
+            redirectTo: `${window.location.origin}/auth/callback/github`,
+          }),
+
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

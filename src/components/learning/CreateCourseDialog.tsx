@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 
 interface CreateCourseDialogProps {
@@ -40,7 +40,7 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
 
-    const { error } = await supabase.from("courses").insert({
+    const { error } = await api.from("courses").insert({
       title: formData.title,
       description: formData.description || null,
       slug,

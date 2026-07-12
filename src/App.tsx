@@ -21,6 +21,12 @@ import Learning from "./pages/Learning";
 import CourseDetail from "./pages/CourseDetail";
 import Playground from "./pages/Playground";
 import NotFound from "./pages/NotFound";
+import OAuthCallback from "./pages/OAuthCallback";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminLearning from "./pages/AdminLearning";
+import AdminCourseDetail from "./pages/AdminCourseDetail";
+import AdminQuiz from "./pages/AdminQuiz";
+import Quiz from "./pages/Quiz";
 
 const queryClient = new QueryClient();
 
@@ -30,11 +36,23 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AuthProvider>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/learning" element={<AdminLearning />} />
+              <Route
+                path="/admin/learning/:courseId"
+                element={<AdminCourseDetail />}
+              />
+              <Route path="/admin/quizzes" element={<AdminQuiz />} />
               <Route path="/questions" element={<QA />} />
               <Route path="/questions/:id" element={<QuestionDetail />} />
               <Route path="/ask" element={<AskQuestion />} />
@@ -48,8 +66,13 @@ const App = () => (
               <Route path="/search" element={<Search />} />
               <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/learning" element={<Learning />} />
+              <Route path="/quiz" element={<Quiz />} />
               <Route path="/learning/:courseId" element={<CourseDetail />} />
               <Route path="/playground" element={<Playground />} />
+              <Route
+                path="/auth/callback/:provider"
+                element={<OAuthCallback />}
+              />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

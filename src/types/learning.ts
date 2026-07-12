@@ -1,4 +1,4 @@
-import { QuizQuestion } from "@/components/learning/Quiz";
+import { QuizData, QuizQuestion } from "@/components/learning/Quiz";
 import { CodingChallengeData } from "@/components/learning/CodingChallenge";
 
 export interface Lesson {
@@ -9,8 +9,10 @@ export interface Lesson {
   duration: string | null;
   video_url: string | null;
   order_index: number;
-  quiz: QuizQuestion[] | null;
+  completion_rule: "manual" | "read" | "quiz" | "challenge";
+  quiz: QuizQuestion[] | QuizData | null;
   challenge: CodingChallengeData | null;
+  is_published: boolean;
   completed?: boolean;
 }
 
@@ -19,6 +21,8 @@ export interface CourseModule {
   course_id: string;
   title: string;
   order_index: number;
+  completion_rule: "manual" | "read" | "quiz" | "challenge";
+  is_published: boolean;
   lessons: Lesson[];
 }
 
@@ -36,6 +40,10 @@ export interface Course {
   instructor_avatar: string | null;
   instructor_title: string | null;
   topics: string[] | null;
+  learn_outcomes: string[];
+  prerequisites: string[];
+  projects_included: string[];
+  is_progressive: boolean;
   is_published: boolean;
   created_by: string | null;
   created_at: string;
@@ -51,7 +59,10 @@ export interface UserCourseProgress {
   user_id: string;
   course_id: string;
   completed_lessons: string[];
+  last_lesson_id: string | null;
   progress_percent: number;
+  completion_rule: "manual" | "read" | "quiz" | "challenge";
+  is_published: boolean;
   started_at: string;
   completed_at: string | null;
 }

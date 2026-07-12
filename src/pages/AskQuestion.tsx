@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, X, HelpCircle, Eye, Edit3 } from "lucide-react";
@@ -52,7 +52,7 @@ const AskQuestion = () => {
 
   const fetchTags = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("tags")
         .select("id, name, slug, color")
         .order("usage_count", { ascending: false });
@@ -98,7 +98,7 @@ const AskQuestion = () => {
       const slug = generateSlug(title);
       
       // Create question
-      const { data: question, error: questionError } = await supabase
+      const { data: question, error: questionError } = await api
         .from("questions")
         .insert({
           user_id: user.id,
@@ -113,7 +113,7 @@ const AskQuestion = () => {
 
       // Add tags
       if (selectedTags.length > 0) {
-        const { error: tagsError } = await supabase
+        const { error: tagsError } = await api
           .from("question_tags")
           .insert(
             selectedTags.map(tag => ({

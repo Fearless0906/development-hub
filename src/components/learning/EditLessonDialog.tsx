@@ -47,7 +47,7 @@ import {
   Heading2,
   Quote,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 import { CourseModule, Lesson } from "@/types/learning";
 import { CodingChallengeData } from "./CodingChallenge";
@@ -434,7 +434,7 @@ export const EditLessonDialog = ({
       };
     }
 
-    const { error } = await supabase
+    const { error } = await api
       .from("lessons")
       .update({
         module_id: formData.moduleId,
@@ -460,7 +460,7 @@ export const EditLessonDialog = ({
   const handleDelete = async () => {
     setDeleting(true);
 
-    const { error } = await supabase
+    const { error } = await api
       .from("lessons")
       .delete()
       .eq("id", lesson.id);

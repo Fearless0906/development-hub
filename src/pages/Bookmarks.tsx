@@ -3,7 +3,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { QuestionCard } from "@/components/qa/QuestionCard";
 import { SnippetCard } from "@/components/code/SnippetCard";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Bookmark, MessageSquare, Code } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -80,7 +80,7 @@ const Bookmarks = () => {
       setLoading(true);
 
       // Fetch bookmarked questions
-      const { data: questionBookmarks } = await supabase
+      const { data: questionBookmarks } = await api
         .from("bookmarks")
         .select("bookmarkable_id")
         .eq("user_id", user.id)
@@ -88,7 +88,7 @@ const Bookmarks = () => {
 
       if (questionBookmarks && questionBookmarks.length > 0) {
         const questionIds = questionBookmarks.map((b) => b.bookmarkable_id);
-        const { data: questionsData } = await supabase
+        const { data: questionsData } = await api
           .from("questions")
           .select(`
             id, title, content, slug, votes_count, answers_count, views_count,
@@ -104,7 +104,7 @@ const Bookmarks = () => {
       }
 
       // Fetch bookmarked snippets
-      const { data: snippetBookmarks } = await supabase
+      const { data: snippetBookmarks } = await api
         .from("bookmarks")
         .select("bookmarkable_id")
         .eq("user_id", user.id)
@@ -112,7 +112,7 @@ const Bookmarks = () => {
 
       if (snippetBookmarks && snippetBookmarks.length > 0) {
         const snippetIds = snippetBookmarks.map((b) => b.bookmarkable_id);
-        const { data: snippetsData } = await supabase
+        const { data: snippetsData } = await api
           .from("code_snippets")
           .select(`
             id, title, description, code, language, votes_count, views_count,
@@ -129,7 +129,7 @@ const Bookmarks = () => {
       }
 
       // Fetch user votes
-      const { data: votesData } = await supabase
+      const { data: votesData } = await api
         .from("votes")
         .select("voteable_id, value")
         .eq("user_id", user.id);

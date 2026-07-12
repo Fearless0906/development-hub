@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { Bookmark } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface BookmarkButtonProps {
-  bookmarkableType: "question" | "snippet";
+  bookmarkableType: "question" | "snippet" | "lesson";
   bookmarkableId: string;
   className?: string;
 }
@@ -27,7 +27,7 @@ export const BookmarkButton = ({
     }
 
     const checkBookmark = async () => {
-      const { data } = await supabase
+      const { data } = await api
         .from("bookmarks")
         .select("id")
         .eq("user_id", user.id)
@@ -54,7 +54,7 @@ export const BookmarkButton = ({
 
     try {
       if (isBookmarked) {
-        const { error } = await supabase
+        const { error } = await api
           .from("bookmarks")
           .delete()
           .eq("user_id", user.id)
@@ -65,7 +65,7 @@ export const BookmarkButton = ({
         setIsBookmarked(false);
         toast.success("Bookmark removed");
       } else {
-        const { error } = await supabase.from("bookmarks").insert({
+        const { error } = await api.from("bookmarks").insert({
           user_id: user.id,
           bookmarkable_id: bookmarkableId,
           bookmarkable_type: bookmarkableType,
@@ -92,13 +92,11 @@ export const BookmarkButton = ({
           ? "text-primary bg-primary/10"
           : "text-muted-foreground hover:text-foreground hover:bg-secondary",
         isLoading && "opacity-50 cursor-not-allowed",
-        className
+        className,
       )}
       title={isBookmarked ? "Remove bookmark" : "Bookmark"}
     >
-      <Bookmark
-        className={cn("h-4 w-4", isBookmarked && "fill-current")}
-      />
+      <Bookmark className={cn("h-4 w-4", isBookmarked && "fill-current")} />
     </button>
   );
 };

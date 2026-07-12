@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +38,7 @@ export const VoteButton = ({
     try {
       if (vote === value) {
         // Remove vote
-        const { error } = await supabase
+        const { error } = await api
           .from("votes")
           .delete()
           .eq("user_id", user.id)
@@ -53,7 +53,7 @@ export const VoteButton = ({
         onVoteChange?.(newVotes, null);
       } else {
         // Upsert vote
-        const { error } = await supabase
+        const { error } = await api
           .from("votes")
           .upsert({
             user_id: user.id,

@@ -71,7 +71,6 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -162,13 +161,11 @@ REST_FRAMEWORK = {
 }
 
 # Local Vite development servers allowed to call the Django API.
-FRONTEND_URL = env(
-    "FRONTEND_URL",
-    default="http://localhost:8080",
-)
-
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:8080'
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -238,6 +235,7 @@ SOCIAL_AUTH_PIPELINE = (
     "social_core.pipeline.user.get_username",
     "social_core.pipeline.user.create_user",
     "social_core.pipeline.social_auth.associate_user",
+    "users.pipeline.update_oauth_profile",
     "social_core.pipeline.social_auth.load_extra_data",
     "social_core.pipeline.user.user_details",
 )
@@ -259,6 +257,12 @@ DJOSER = {
     'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': [
         'http://localhost:8080/auth/callback/google',
         'http://localhost:8080/auth/callback/github',
+        'http://127.0.0.1:8080/auth/callback/google',
+        'http://127.0.0.1:8080/auth/callback/github',
+        'http://localhost:5173/auth/callback/google',
+        'http://localhost:5173/auth/callback/github',
+        'http://127.0.0.1:5173/auth/callback/google',
+        'http://127.0.0.1:5173/auth/callback/github',
     ],
     'SERIALIZERS': {
         'user_create': 'users.serializers.CreateUserSerializer',

@@ -37,7 +37,7 @@ import {
   Heading2,
   Quote,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 import { CourseModule } from "@/types/learning";
 import { CodingChallengeData } from "./CodingChallenge";
@@ -100,7 +100,7 @@ export const CreateLessonDialog = ({
     }
 
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from("course_modules")
       .insert({
         course_id: courseId,
@@ -243,7 +243,7 @@ export const CreateLessonDialog = ({
       };
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from("lessons")
       .insert({
         module_id: formData.moduleId,

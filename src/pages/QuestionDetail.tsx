@@ -8,7 +8,7 @@ import { MarkdownRenderer } from "@/components/markdown/MarkdownRenderer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -95,7 +95,7 @@ const QuestionDetail = () => {
 
   const fetchQuestion = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("questions")
         .select(`
           *,
@@ -130,7 +130,7 @@ const QuestionDetail = () => {
 
   const fetchAnswers = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("answers")
         .select(`
           *,
@@ -157,7 +157,7 @@ const QuestionDetail = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("votes")
         .select("voteable_id, value")
         .eq("user_id", user.id)
@@ -180,7 +180,7 @@ const QuestionDetail = () => {
     if (!id) return;
     try {
       // Increment views directly on the question
-      await supabase
+      await api
         .from("questions")
         .update({ views_count: (question?.views_count || 0) + 1 })
         .eq("id", id);
@@ -206,7 +206,7 @@ const QuestionDetail = () => {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await api
         .from("answers")
         .insert({
           question_id: id,
@@ -235,7 +235,7 @@ const QuestionDetail = () => {
 
     try {
       // Update question
-      await supabase
+      await api
         .from("questions")
         .update({ 
           accepted_answer_id: answerId,
@@ -244,12 +244,12 @@ const QuestionDetail = () => {
         .eq("id", id);
 
       // Update answers
-      await supabase
+      await api
         .from("answers")
         .update({ is_accepted: false })
         .eq("question_id", id);
 
-      await supabase
+      await api
         .from("answers")
         .update({ is_accepted: true })
         .eq("id", answerId);

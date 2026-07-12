@@ -1,5 +1,10 @@
-import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  useParams,
+  Link,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import {
@@ -22,10 +27,30 @@ import {
   Loader2,
   Trash2,
   Edit2,
+  Copy,
+  GripVertical,
+  Search,
+  Plus,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  StickyNote,
+  ClipboardList,
+  Target,
+  FolderKanban,
+  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
@@ -39,23 +64,35 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Certificate } from "@/components/learning/Certificate";
-import { Quiz, QuizQuestion } from "@/components/learning/Quiz";
+import {
+  normalizeQuizData,
+  Quiz,
+  QuizAttemptAnswer,
+  QuizData,
+  QuizQuestion,
+} from "@/components/learning/Quiz";
 import {
   CodingChallenge,
   CodingChallengeData,
 } from "@/components/learning/CodingChallenge";
 import { CreateLessonDialog } from "@/components/learning/CreateLessonDialog";
-import { EditLessonDialog } from "@/components/learning/EditLessonDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { toast } from "sonner";
 import { Course, CourseModule, Lesson } from "@/types/learning";
 import {
@@ -72,11 +109,42 @@ const iconMap: Record<string, React.ElementType> = {
   BookOpen,
 };
 
-const CourseDetail = () => {
+type CourseReview = {
+  id: string;
+  user_id: string;
+  rating: number;
+  review: string | null;
+  created_at: string;
+};
+
+type CourseCertificateRecord = {
+  certificate_id: string;
+  issued_at: string;
+};
+
+type DragItem =
+  | { type: "module"; moduleId: string }
+  | { type: "lesson"; lessonId: string; sourceModuleId: string };
+
+type QuizAttemptSummary = {
+  score: number;
+  total: number;
+  passed: boolean;
+  attempted_at: string;
+};
+
+interface CourseDetailProps {
+  adminView?: boolean;
+}
+
+const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { isAdmin } = useIsAdmin();
+  const [searchParams] = useSearchParams();
+  const requestedLessonId = searchParams.get("lesson");
+  const { user, loading: authLoading } = useAuth();
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
+  const coursesPath = adminView ? "/admin/learning" : "/learning";
 
   const [course, setCourse] = useState<Course | null>(null);
   const [modules, setModules] = useState<CourseModule[]>([]);
@@ -92,18 +160,46 @@ const CourseDetail = () => {
     null,
   );
   const [deletingModuleId, setDeletingModuleId] = useState<string | null>(null);
+  const [moduleToRename, setModuleToRename] = useState<CourseModule | null>(
+    null,
+  );
+  const [renameModuleTitle, setRenameModuleTitle] = useState("");
+  const [renamingModule, setRenamingModule] = useState(false);
+  const [createModuleOpen, setCreateModuleOpen] = useState(false);
+  const [newModuleTitle, setNewModuleTitle] = useState("");
+  const [creatingModule, setCreatingModule] = useState(false);
+  const [lessonToDelete, setLessonToDelete] = useState<Lesson | null>(null);
+  const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
   const lessonItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lessonSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [savingLessonId, setSavingLessonId] = useState<string | null>(null);
+  const [draggingItem, setDraggingItem] = useState<DragItem | null>(null);
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const [lessonSearchQuery, setLessonSearchQuery] = useState("");
+  const [openModuleIds, setOpenModuleIds] = useState<string[]>([]);
+  const [quizAttemptsByLesson, setQuizAttemptsByLesson] = useState<
+    Record<string, QuizAttemptSummary>
+  >({});
+  const [lessonNotes, setLessonNotes] = useState<Record<string, string>>({});
+  const [savingNoteLessonId, setSavingNoteLessonId] = useState<string | null>(
+    null,
+  );
+  const [reviews, setReviews] = useState<CourseReview[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [savingReview, setSavingReview] = useState(false);
+  const [certificateRecord, setCertificateRecord] =
+    useState<CourseCertificateRecord | null>(null);
+  const [issuingCertificate, setIssuingCertificate] = useState(false);
 
   const fetchCourseData = async (targetLessonId?: string) => {
     if (!courseId) return;
 
     setLoading(true);
 
-    const { data: courseData, error: courseError } = await supabase
+    const { data: courseData, error: courseError } = await api
       .from("courses")
       .select("*")
       .eq("slug", courseId)
@@ -115,9 +211,29 @@ const CourseDetail = () => {
       return;
     }
 
-    setCourse(courseData as Course);
+    const { data: reviewsData } = await api
+      .from("course_reviews")
+      .select("id, user_id, rating, review, created_at")
+      .eq("course_id", courseData.id)
+      .order("created_at", { ascending: false });
 
-    const { data: modulesData, error: modulesError } = await supabase
+    setReviews((reviewsData || []) as CourseReview[]);
+
+    if (user) {
+      const userReview = (reviewsData || []).find(
+        (review) => review.user_id === user.id,
+      );
+
+      if (userReview) {
+        setReviewRating(userReview.rating);
+        setReviewText(userReview.review || "");
+      }
+    }
+
+    setCourse(courseData as Course);
+    let fetchedVisibleModules: CourseModule[] = [];
+
+    const { data: modulesData, error: modulesError } = await api
       .from("course_modules")
       .select(
         `
@@ -134,18 +250,38 @@ const CourseDetail = () => {
       const transformedModules: CourseModule[] = (modulesData || []).map(
         (m: any) => ({
           ...m,
+          is_published: m.is_published ?? true,
           lessons: (m.lessons || [])
             .sort((a: any, b: any) => a.order_index - b.order_index)
             .map((l: any) => ({
               ...l,
-              quiz: l.quiz as QuizQuestion[] | null,
+              completion_rule: l.completion_rule || "manual",
+              is_published: l.is_published ?? true,
+              quiz: l.quiz as QuizQuestion[] | QuizData | null,
               challenge: l.challenge as CodingChallengeData | null,
             })),
         }),
       );
-      setModules(transformedModules);
+      const visibleModules = isAdmin
+        ? transformedModules
+        : transformedModules
+            .filter((module) => module.is_published)
+            .map((module) => ({
+              ...module,
+              lessons: module.lessons.filter((lesson) => lesson.is_published),
+            }));
 
-      const allLessons = transformedModules.flatMap((m) => m.lessons);
+      fetchedVisibleModules = visibleModules;
+      setModules(visibleModules);
+      setOpenModuleIds((previousIds) =>
+        previousIds.length > 0
+          ? previousIds.filter((id) =>
+              visibleModules.some((module) => module.id === id),
+            )
+          : visibleModules.map((module) => module.id),
+      );
+
+      const allLessons = visibleModules.flatMap((m) => m.lessons);
       if (
         targetLessonId &&
         allLessons.some((lesson) => lesson.id === targetLessonId)
@@ -164,68 +300,287 @@ const CourseDetail = () => {
     }
 
     if (user) {
-      const { data: progressData } = await supabase
+      const { data: progressData } = await api
         .from("user_course_progress")
-        .select("completed_lessons")
+        .select("completed_lessons, last_lesson_id")
         .eq("user_id", user.id)
         .eq("course_id", courseData.id)
         .maybeSingle();
 
       if (progressData) {
         setCompletedLessons(progressData.completed_lessons || []);
+        const visibleLessons = fetchedVisibleModules.flatMap(
+          (module) => module.lessons,
+        );
+        const lastLessonExists = visibleLessons.some(
+          (lesson) => lesson.id === progressData.last_lesson_id,
+        );
+
+        if (!targetLessonId && lastLessonExists) {
+          setCurrentLessonId(progressData.last_lesson_id);
+          setPendingLessonId(progressData.last_lesson_id);
+        }
       }
+
+      const { data: quizAttemptsData } = await api
+        .from("user_quiz_attempts")
+        .select("lesson_id, score, total, passed, attempted_at")
+        .eq("user_id", user.id)
+        .order("attempted_at", { ascending: false });
+
+      const latestAttempts: Record<string, QuizAttemptSummary> = {};
+      (quizAttemptsData || []).forEach((attempt) => {
+        if (!latestAttempts[attempt.lesson_id]) {
+          latestAttempts[attempt.lesson_id] = {
+            score: attempt.score,
+            total: attempt.total,
+            passed: attempt.passed,
+            attempted_at: attempt.attempted_at,
+          };
+        }
+      });
+      setQuizAttemptsByLesson(latestAttempts);
+
+      const { data: notesData } = await api
+        .from("user_lesson_notes")
+        .select("lesson_id, note")
+        .eq("user_id", user.id);
+
+      const nextNotes: Record<string, string> = {};
+      (notesData || []).forEach((note) => {
+        nextNotes[note.lesson_id] = note.note;
+      });
+      setLessonNotes(nextNotes);
+
+      const { data: certificateData } = await api
+        .from("course_certificates")
+        .select("certificate_id, issued_at")
+        .eq("user_id", user.id)
+        .eq("course_id", courseData.id)
+        .maybeSingle();
+
+      setCertificateRecord(certificateData || null);
+    } else {
+      setCompletedLessons([]);
+      setQuizAttemptsByLesson({});
+      setLessonNotes({});
+      setCertificateRecord(null);
     }
 
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchCourseData();
-  }, [courseId, user]);
+    fetchCourseData(requestedLessonId || undefined);
+  }, [courseId, isAdmin, requestedLessonId, user]);
 
   useEffect(() => {
-    if (!pendingLessonId || currentLessonId !== pendingLessonId) return;
+    if (!adminView || authLoading || adminLoading) return;
 
-    requestAnimationFrame(() => {
-      lessonItemRefs.current[pendingLessonId]?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
-      lessonSectionRefs.current[pendingLessonId]?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-      setPendingLessonId(null);
-    });
-  }, [currentLessonId, pendingLessonId]);
+    if (!user) {
+      navigate("/auth", { replace: true });
+      return;
+    }
 
-  const allLessons = modules.flatMap((m) => m.lessons);
+    if (!isAdmin) {
+      navigate("/", { replace: true });
+    }
+  }, [adminLoading, adminView, authLoading, isAdmin, navigate, user]);
+
+  // useEffect(() => {
+  //   if (!pendingLessonId || currentLessonId !== pendingLessonId) return;
+
+  //   requestAnimationFrame(() => {
+  //     lessonItemRefs.current[pendingLessonId]?.scrollIntoView({
+  //       behavior: "smooth",
+  //       block: "nearest",
+  //     });
+  //     lessonSectionRefs.current[pendingLessonId]?.scrollIntoView({
+  //       behavior: "smooth",
+  //       block: "start",
+  //     });
+  //     setPendingLessonId(null);
+  //   });
+  // }, [currentLessonId, pendingLessonId]);
+
+  const allLessons = useMemo(
+    () => modules.flatMap((m) => m.lessons),
+    [modules],
+  );
+
+  const currentLesson = useMemo(
+    () => allLessons.find((lesson) => lesson.id === currentLessonId) || null,
+    [allLessons, currentLessonId],
+  );
+  const filteredModules = useMemo(() => {
+    const query = lessonSearchQuery.trim().toLowerCase();
+
+    if (!query) return modules;
+
+    return modules
+      .map((module) => ({
+        ...module,
+        lessons: module.lessons.filter(
+          (lesson) =>
+            lesson.title.toLowerCase().includes(query) ||
+            module.title.toLowerCase().includes(query),
+        ),
+      }))
+      .filter(
+        (module) =>
+          module.title.toLowerCase().includes(query) ||
+          module.lessons.length > 0,
+      );
+  }, [lessonSearchQuery, modules]);
+  const currentLessonIndex = useMemo(
+    () =>
+      currentLessonId
+        ? allLessons.findIndex((lesson) => lesson.id === currentLessonId)
+        : -1,
+    [allLessons, currentLessonId],
+  );
+  const averageRating =
+    reviews.length > 0
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+      : course?.rating || 0;
+  const certificateId =
+    certificateRecord?.certificate_id ||
+    (course && user
+      ? `CERT-${course.id.slice(0, 8).toUpperCase()}-${user.id
+          .slice(0, 8)
+          .toUpperCase()}`
+      : "CERT-PENDING");
+  const verificationUrl = `${window.location.origin}/learning/${courseId}?certificate=${certificateId}`;
+  const isLessonLocked = (lessonId: string) => {
+    if (!course?.is_progressive || isAdmin) return false;
+
+    const index = allLessons.findIndex((lesson) => lesson.id === lessonId);
+    if (index <= 0) return false;
+
+    const previousLesson = allLessons[index - 1];
+    return !completedLessons.includes(previousLesson.id);
+  };
+
+  useEffect(() => {
+    const lessonSections = allLessons
+      .map((lesson) => lessonSectionRefs.current[lesson.id])
+      .filter((section): section is HTMLDivElement => Boolean(section));
+
+    if (lessonSections.length === 0 || pendingLessonId) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleLesson = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (!visibleLesson) return;
+
+        const lessonId = visibleLesson.target.getAttribute("data-lesson-id");
+
+        if (lessonId) {
+          setCurrentLessonId(lessonId);
+        }
+      },
+      {
+        rootMargin: "-140px 0px -45% 0px",
+        threshold: [0.2, 0.4, 0.6],
+      },
+    );
+
+    lessonSections.forEach((section) => observer.observe(section));
+
+    return () => observer.disconnect();
+  }, [allLessons, pendingLessonId]);
 
   const completedCount = completedLessons.length;
+  const isSearchingLessons = lessonSearchQuery.trim().length > 0;
+
+  useEffect(() => {
+    if (!isSearchingLessons) return;
+
+    setOpenModuleIds(filteredModules.map((module) => module.id));
+  }, [filteredModules, isSearchingLessons]);
+
   const progressPercent =
     allLessons.length > 0
       ? Math.round((completedCount / allLessons.length) * 100)
       : 0;
+  const canReorderContent = isAdmin && !isSearchingLessons;
 
-  const markLessonComplete = async (lessonId: string) => {
+  useEffect(() => {
+    if (canReorderContent) return;
+
+    setDraggingItem(null);
+    setDragOverTarget(null);
+  }, [canReorderContent]);
+
+  useEffect(() => {
+    if (!user || !course || !currentLessonId) return;
+
+    const timeout = window.setTimeout(() => {
+      api
+        .from("user_course_progress")
+        .upsert(
+          {
+            user_id: user.id,
+            course_id: course.id,
+            last_lesson_id: currentLessonId,
+            completed_lessons: completedLessons,
+            progress_percent: progressPercent,
+          },
+          {
+            onConflict: "user_id,course_id",
+          },
+        )
+        .then(({ error }) => {
+          if (error) {
+            console.error("Error saving last lesson:", error);
+          }
+        });
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [completedLessons, course, currentLessonId, progressPercent, user]);
+
+  useEffect(() => {
+    if (!currentLesson || currentLesson.completion_rule !== "read") return;
+    if (completedLessons.includes(currentLesson.id)) return;
+
+    const timeout = window.setTimeout(() => {
+      markLessonComplete(currentLesson.id, { silent: true });
+    }, 2500);
+
+    return () => window.clearTimeout(timeout);
+  }, [completedLessons, currentLesson]);
+
+  const markLessonComplete = async (
+    lessonId: string,
+    options: { silent?: boolean } = {},
+  ) => {
     if (!user || !course) {
-      toast.error("Please sign in to track progress");
+      if (!options.silent) {
+        toast.error("Please sign in to track progress");
+      }
       return;
     }
 
-    const newCompletedLessons = completedLessons.includes(lessonId)
-      ? completedLessons
-      : [...completedLessons, lessonId];
+    if (completedLessons.includes(lessonId)) {
+      return;
+    }
+
+    const newCompletedLessons = [...completedLessons, lessonId];
 
     const newProgress = Math.round(
       (newCompletedLessons.length / allLessons.length) * 100,
     );
 
-    const { error } = await supabase.from("user_course_progress").upsert(
+    const { error } = await api.from("user_course_progress").upsert(
       {
         user_id: user.id,
         course_id: course.id,
         completed_lessons: newCompletedLessons,
+        last_lesson_id: lessonId,
         progress_percent: newProgress,
         completed_at: newProgress === 100 ? new Date().toISOString() : null,
       },
@@ -236,14 +591,22 @@ const CourseDetail = () => {
 
     if (error) {
       console.error("Error updating progress:", error);
-      toast.error("Failed to update progress");
+      if (!options.silent) {
+        toast.error("Failed to update progress");
+      }
     } else {
       setCompletedLessons(newCompletedLessons);
-      toast.success("Lesson marked as complete!");
+      if (!options.silent) {
+        toast.success("Lesson marked as complete!");
+      }
     }
   };
 
   const scrollToLesson = (lessonId: string) => {
+    if (isLessonLocked(lessonId)) {
+      toast.error("Complete the previous lesson to unlock this one");
+      return;
+    }
     setCurrentLessonId(lessonId);
     lessonSectionRefs.current[lessonId]?.scrollIntoView({
       behavior: "smooth",
@@ -255,10 +618,561 @@ const CourseDetail = () => {
     });
   };
 
+  const saveLessonNote = async (lessonId: string) => {
+    if (!user) {
+      toast.error("Please sign in to save notes");
+      return;
+    }
+
+    setSavingNoteLessonId(lessonId);
+    const { error } = await api.from("user_lesson_notes").upsert(
+      {
+        user_id: user.id,
+        lesson_id: lessonId,
+        note: lessonNotes[lessonId] || "",
+      },
+      {
+        onConflict: "user_id,lesson_id",
+      },
+    );
+    setSavingNoteLessonId(null);
+
+    if (error) {
+      console.error("Error saving note:", error);
+      toast.error("Failed to save note");
+      return;
+    }
+
+    toast.success("Note saved");
+  };
+
+  const handleSaveReview = async () => {
+    if (!user || !course) {
+      toast.error("Please sign in to review this course");
+      return;
+    }
+
+    setSavingReview(true);
+    const { error } = await api.from("course_reviews").upsert(
+      {
+        user_id: user.id,
+        course_id: course.id,
+        rating: reviewRating,
+        review: reviewText.trim() || null,
+      },
+      {
+        onConflict: "user_id,course_id",
+      },
+    );
+    setSavingReview(false);
+
+    if (error) {
+      console.error("Error saving review:", error);
+      toast.error("Failed to save review");
+      return;
+    }
+
+    const { data: reviewsData } = await api
+      .from("course_reviews")
+      .select("id, user_id, rating, review, created_at")
+      .eq("course_id", course.id)
+      .order("created_at", { ascending: false });
+    const nextReviews = (reviewsData || []) as CourseReview[];
+    const nextAverage =
+      nextReviews.length > 0
+        ? Number(
+            (
+              nextReviews.reduce((sum, review) => sum + review.rating, 0) /
+              nextReviews.length
+            ).toFixed(1),
+          )
+        : course.rating || 0;
+
+    setReviews(nextReviews);
+    setCourse({ ...course, rating: nextAverage });
+    await api
+      .from("courses")
+      .update({ rating: nextAverage })
+      .eq("id", course.id);
+    toast.success("Review saved");
+  };
+
+  const handleOpenCertificate = async () => {
+    if (!user || !course) {
+      toast.error("Please sign in to get your certificate");
+      return;
+    }
+
+    if (certificateRecord) {
+      setShowCertificate(true);
+      return;
+    }
+
+    setIssuingCertificate(true);
+    const issuedCertificateId = `CERT-${course.id
+      .slice(0, 8)
+      .toUpperCase()}-${user.id.slice(0, 8).toUpperCase()}-${Date.now()
+      .toString(36)
+      .toUpperCase()}`;
+    const { data, error } = await api
+      .from("course_certificates")
+      .insert({
+        certificate_id: issuedCertificateId,
+        user_id: user.id,
+        course_id: course.id,
+      })
+      .select("certificate_id, issued_at")
+      .single();
+    setIssuingCertificate(false);
+
+    if (error) {
+      console.error("Error issuing certificate:", error);
+      toast.error("Failed to issue certificate");
+      return;
+    }
+
+    setCertificateRecord(data);
+    setShowCertificate(true);
+  };
+
+  const handleQuizComplete = async (
+    lesson: Lesson,
+    score: number,
+    total: number,
+    details?: {
+      passed: boolean;
+      percentage: number;
+      answers: QuizAttemptAnswer[];
+      passScore: number;
+    },
+  ) => {
+    const quiz = normalizeQuizData(lesson.quiz);
+    const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+    const passed =
+      details?.passed ?? (total > 0 ? percentage >= quiz.passScore : false);
+
+    if (user) {
+      const { error } = await api.from("user_quiz_attempts").insert({
+        user_id: user.id,
+        lesson_id: lesson.id,
+        score,
+        total,
+        passed,
+        pass_score: details?.passScore ?? quiz.passScore,
+        selected_answers: details?.answers || [],
+        question_results: details?.answers || [],
+      });
+
+      if (error) {
+        console.error("Error saving quiz attempt:", error);
+        toast.error("Quiz completed, but the attempt was not saved");
+      } else {
+        setQuizAttemptsByLesson((previousAttempts) => ({
+          ...previousAttempts,
+          [lesson.id]: {
+            score,
+            total,
+            passed,
+            attempted_at: new Date().toISOString(),
+          },
+        }));
+      }
+    }
+
+    toast.success(`Quiz completed! You scored ${score}/${total}`);
+
+    if (lesson.completion_rule === "quiz" && passed) {
+      markLessonComplete(lesson.id, { silent: true });
+    }
+  };
+
+  const persistModuleOrder = async (updatedModules: CourseModule[]) => {
+    const updates = updatedModules.map((module, index) =>
+      api
+        .from("course_modules")
+        .update({ order_index: index })
+        .eq("id", module.id),
+    );
+
+    const results = await Promise.all(updates);
+    const failedUpdate = results.find(({ error }) => error);
+
+    if (failedUpdate?.error) {
+      throw failedUpdate.error;
+    }
+  };
+
+  const persistLessonOrder = async (updatedModules: CourseModule[]) => {
+    const updates = updatedModules.flatMap((module) =>
+      module.lessons.map((lesson, index) =>
+        api
+          .from("lessons")
+          .update({
+            module_id: module.id,
+            order_index: index,
+          })
+          .eq("id", lesson.id),
+      ),
+    );
+
+    const results = await Promise.all(updates);
+    const failedUpdate = results.find(({ error }) => error);
+
+    if (failedUpdate?.error) {
+      throw failedUpdate.error;
+    }
+  };
+
+  const handleCreateModule = async () => {
+    if (!course || !canReorderContent) return;
+
+    const title = newModuleTitle.trim();
+    if (!title) {
+      toast.error("Module title is required");
+      return;
+    }
+
+    setCreatingModule(true);
+    const { error } = await api.from("course_modules").insert({
+      course_id: course.id,
+      title: title,
+      order_index: modules.length,
+      is_published: true,
+    });
+    setCreatingModule(false);
+
+    if (error) {
+      console.error("Error creating module:", error);
+      toast.error("Failed to create module");
+      return;
+    }
+    setCreateModuleOpen(false);
+    setNewModuleTitle("");
+    toast.success("Module created");
+    fetchCourseData(currentLessonId || undefined);
+  };
+
+  const openRenameModuleDialog = (module: CourseModule) => {
+    if (!isAdmin) return;
+
+    setModuleToRename(module);
+    setRenameModuleTitle(module.title);
+  };
+
+  const handleRenameModule = async () => {
+    if (!isAdmin || !moduleToRename) return;
+
+    const title = renameModuleTitle.trim();
+    if (!title) {
+      toast.error("Module title is required");
+      return;
+    }
+
+    if (title === moduleToRename.title) {
+      setModuleToRename(null);
+      setRenameModuleTitle("");
+      return;
+    }
+    setRenamingModule(true);
+    const { error } = await api
+      .from("course_modules")
+      .update({ title })
+      .eq("id", moduleToRename.id);
+    setRenamingModule(false);
+
+    if (error) {
+      console.error("Error renaming module:", error);
+      toast.error("Failed to rename module");
+      return;
+    }
+
+    setModules((previousModules) =>
+      previousModules.map((existingModule) =>
+        existingModule.id === moduleToRename.id
+          ? { ...existingModule, title }
+          : existingModule,
+      ),
+    );
+    setModuleToRename(null);
+    setRenameModuleTitle("");
+    toast.success("Module renamed");
+  };
+
+  const handleDuplicateLesson = async (lesson: Lesson) => {
+    if (!canReorderContent) return;
+
+    const module = modules.find((item) => item.id === lesson.module_id);
+    if (!module) return;
+
+    const { data, error } = await api
+      .from("lessons")
+      .insert({
+        module_id: lesson.module_id,
+        title: `${lesson.title} Copy`,
+        content: lesson.content,
+        duration: lesson.duration,
+        video_url: lesson.video_url,
+        order_index: module.lessons.length,
+        quiz: lesson.quiz as unknown as undefined,
+        challenge: lesson.challenge as unknown as undefined,
+        completion_rule: lesson.completion_rule,
+        is_published: lesson.is_published,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Error duplicating lesson:", error);
+      toast.error("Failed to duplicate lesson");
+      return;
+    }
+
+    toast.success("Lesson duplicated");
+    fetchCourseData(data.id);
+  };
+
+  const handleDeleteLesson = async () => {
+    if (!canReorderContent || !lessonToDelete) return;
+
+    setDeletingLessonId(lessonToDelete.id);
+    const { error } = await api
+      .from("lessons")
+      .delete()
+      .eq("id", lessonToDelete.id);
+    setDeletingLessonId(null);
+
+    if (error) {
+      console.error("Error deleting lesson:", error);
+      toast.error("Failed to delete lesson");
+      return;
+    }
+    setLessonToDelete(null);
+    toast.success("Lesson deleted");
+    fetchCourseData();
+  };
+
+  const handleCompletionRuleChange = async (
+    lesson: Lesson,
+    completionRule: Lesson["completion_rule"],
+  ) => {
+    if (!canReorderContent) return;
+
+    const { error } = await api
+      .from("lessons")
+      .update({ completion_rule: completionRule })
+      .eq("id", lesson.id);
+
+    if (error) {
+      console.error("Error updating completion rule:", error);
+      toast.error("Failed to update completion rule");
+      return;
+    }
+
+    setModules((previousModules) =>
+      previousModules.map((module) => ({
+        ...module,
+        lessons: module.lessons.map((existingLesson) =>
+          existingLesson.id === lesson.id
+            ? { ...existingLesson, completion_rule: completionRule }
+            : existingLesson,
+        ),
+      })),
+    );
+    toast.success("Completion rule updated");
+  };
+
+  const handleModuleDrop = async (targetModuleId: string) => {
+    if (!canReorderContent || draggingItem?.type !== "module") return;
+
+    const fromIndex = modules.findIndex(
+      (module) => module.id === draggingItem.moduleId,
+    );
+    const toIndex = modules.findIndex((module) => module.id === targetModuleId);
+
+    setDragOverTarget(null);
+    setDraggingItem(null);
+
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const reorderedModules = [...modules];
+    const [movedModule] = reorderedModules.splice(fromIndex, 1);
+    reorderedModules.splice(toIndex, 0, movedModule);
+
+    const normalizedModules = reorderedModules.map((module, index) => ({
+      ...module,
+      order_index: index,
+    }));
+
+    setModules(normalizedModules);
+
+    try {
+      await persistModuleOrder(normalizedModules);
+      toast.success("Module order updated");
+    } catch (error) {
+      console.error("Error updating module order:", error);
+      toast.error("Failed to update module order");
+      fetchCourseData(currentLessonId || undefined);
+    }
+  };
+
+  const handleLessonDrop = async (
+    targetModuleId: string,
+    targetLessonId?: string,
+  ) => {
+    if (!canReorderContent || draggingItem?.type !== "lesson") return;
+    const sourceModule = modules.find(
+      (module) => module.id === draggingItem.sourceModuleId,
+    );
+    const lessonToMove = sourceModule?.lessons.find(
+      (lesson) => lesson.id === draggingItem.lessonId,
+    );
+
+    setDragOverTarget(null);
+    setDraggingItem(null);
+
+    if (targetLessonId === draggingItem.lessonId) return;
+
+    if (!sourceModule || !lessonToMove) return;
+
+    const modulesWithoutLesson = modules.map((module) => ({
+      ...module,
+      lessons: module.lessons.filter(
+        (lesson) => lesson.id !== draggingItem.lessonId,
+      ),
+    }));
+
+    const updatedModules = modulesWithoutLesson.map((module) => {
+      if (module.id !== targetModuleId) return module;
+
+      const insertIndex = targetLessonId
+        ? module.lessons.findIndex((lesson) => lesson.id === targetLessonId)
+        : module.lessons.length;
+      const nextLessons = [...module.lessons];
+
+      nextLessons.splice(
+        insertIndex >= 0 ? insertIndex : nextLessons.length,
+        0,
+        {
+          ...lessonToMove,
+          module_id: targetModuleId,
+        },
+      );
+
+      return {
+        ...module,
+        lessons: nextLessons,
+      };
+    });
+
+    const normalizedModules = updatedModules.map((module) => ({
+      ...module,
+      lessons: module.lessons.map((lesson, index) => ({
+        ...lesson,
+        order_index: index,
+      })),
+    }));
+
+    setModules(normalizedModules);
+
+    try {
+      await persistLessonOrder(normalizedModules);
+      setCurrentLessonId(lessonToMove.id);
+      toast.success("Lesson order updated");
+    } catch (error) {
+      console.error("Error updating lesson order:", error);
+      toast.error("Failed to update lesson order");
+      fetchCourseData(currentLessonId || undefined);
+    }
+  };
+
+  const duplicateLesson = async (lesson: Lesson) => {
+    const module = modules.find((item) => item.id === lesson.module_id);
+    if (!module) return;
+    const { data, error } = await api
+      .from("lessons")
+      .insert({
+        module_id: lesson.module_id,
+        title: `${lesson.title} Copy`,
+        content: lesson.content || "",
+        duration: lesson.duration || "",
+        video_url: lesson.video_url || "",
+        order_index: module.lessons.length,
+        quiz: lesson.quiz || [],
+        challenge: lesson.challenge,
+        completion_rule: lesson.completion_rule,
+        is_published: lesson.is_published,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      toast.error("Failed to duplicate lesson");
+      return;
+    }
+    toast.success("Lesson duplicated");
+    fetchCourseData(data?.id);
+  };
+
+  const handleModulePublishChange = async (
+    module: CourseModule,
+    isPublished: boolean,
+  ) => {
+    if (!isAdmin) return;
+
+    const { error } = await api
+      .from("course_modules")
+      .update({ is_published: isPublished })
+      .eq("id", module.id);
+
+    if (error) {
+      console.error("Error updating module publish status:", error);
+      toast.error("Failed to update module publish status");
+      return;
+    }
+
+    setModules((previousModules) =>
+      previousModules.map((existingModule) =>
+        existingModule.id === module.id
+          ? { ...existingModule, is_published: isPublished }
+          : existingModule,
+      ),
+    );
+    toast.success(isPublished ? "Module published" : "Module moved to draft");
+  };
+
+  const handleLessonPublishChange = async (
+    lesson: Lesson,
+    isPublished: boolean,
+  ) => {
+    if (!isAdmin) return;
+
+    const { error } = await api
+      .from("lessons")
+      .update({ is_published: isPublished })
+      .eq("id", lesson.id);
+
+    if (error) {
+      console.error("Error updating lesson publish status:", error);
+      toast.error("Failed to update lesson publish status");
+      return;
+    }
+
+    setModules((previousModules) =>
+      previousModules.map((module) => ({
+        ...module,
+        lessons: module.lessons.map((existingLesson) =>
+          existingLesson.id === lesson.id
+            ? { ...existingLesson, is_published: isPublished }
+            : existingLesson,
+        ),
+      })),
+    );
+    toast.success(isPublished ? "Lesson published" : "Lesson moved to draft");
+  };
+
   const handleRemoveModule = async (moduleToRemove: CourseModule) => {
     setDeletingModuleId(moduleToRemove.id);
 
-    const { error: lessonsError } = await supabase
+    const { error: lessonsError } = await api
       .from("lessons")
       .delete()
       .eq("module_id", moduleToRemove.id);
@@ -270,7 +1184,7 @@ const CourseDetail = () => {
       return;
     }
 
-    const { error: moduleError } = await supabase
+    const { error: moduleError } = await api
       .from("course_modules")
       .delete()
       .eq("id", moduleToRemove.id);
@@ -293,47 +1207,7 @@ const CourseDetail = () => {
 
     setDeletingCourse(true);
 
-    const moduleIds = modules.map((module) => module.id);
-
-    const { error: progressError } = await supabase
-      .from("user_course_progress")
-      .delete()
-      .eq("course_id", course.id);
-
-    if (progressError) {
-      console.error("Error deleting course progress:", progressError);
-      toast.error("Failed to delete course");
-      setDeletingCourse(false);
-      return;
-    }
-
-    if (moduleIds.length > 0) {
-      const { error: lessonsError } = await supabase
-        .from("lessons")
-        .delete()
-        .in("module_id", moduleIds);
-
-      if (lessonsError) {
-        console.error("Error deleting lessons:", lessonsError);
-        toast.error("Failed to delete course");
-        setDeletingCourse(false);
-        return;
-      }
-    }
-
-    const { error: modulesError } = await supabase
-      .from("course_modules")
-      .delete()
-      .eq("course_id", course.id);
-
-    if (modulesError) {
-      console.error("Error deleting modules:", modulesError);
-      toast.error("Failed to delete course");
-      setDeletingCourse(false);
-      return;
-    }
-
-    const { error: courseError } = await supabase
+    const { error: courseError } = await api
       .from("courses")
       .delete()
       .eq("id", course.id);
@@ -348,14 +1222,19 @@ const CourseDetail = () => {
 
     toast.success("Course deleted successfully!");
     setDeleteCourseOpen(false);
-    navigate("/learning");
+    navigate(coursesPath);
   };
 
-  if (loading) {
+  if (loading || (adminView && (authLoading || adminLoading))) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
-        <main className="pt-24 pb-16 flex items-center justify-center">
+        {!adminView && <Navbar />}
+        <main
+          className={cn(
+            "pb-16 flex items-center justify-center",
+            adminView ? "pt-16" : "pt-24",
+          )}
+        >
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </main>
       </div>
@@ -365,7 +1244,7 @@ const CourseDetail = () => {
   if (!course) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
+        {!adminView && <Navbar />}
         <main className="pt-24 pb-16">
           <div className="container max-w-4xl mx-auto px-4 text-center">
             <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -376,11 +1255,11 @@ const CourseDetail = () => {
               The course you're looking for doesn't exist.
             </p>
             <Button asChild>
-              <Link to="/learning">Back to Courses</Link>
+              <Link to={coursesPath}>Back to Courses</Link>
             </Button>
           </div>
         </main>
-        <Footer />
+        {!adminView && <Footer />}
       </div>
     );
   }
@@ -393,14 +1272,14 @@ const CourseDetail = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-20">
+    <div className={adminView ? "bg-background" : "min-h-screen bg-background"}>
+      {!adminView && <Navbar />}
+      <main className={adminView ? "pt-0" : "pt-20"}>
         <div className="border-b border-border/50 bg-card/50">
           <div className="container max-w-7xl mx-auto px-4 py-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Link
-                to="/learning"
+                to={coursesPath}
                 className="hover:text-foreground flex items-center gap-1"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -505,10 +1384,15 @@ const CourseDetail = () => {
                 </div>
                 {progressPercent === 100 && (
                   <Button
-                    onClick={() => setShowCertificate(true)}
+                    onClick={handleOpenCertificate}
+                    disabled={issuingCertificate}
                     className="hidden sm:flex"
                   >
-                    <Award className="h-4 w-4 mr-2" />
+                    {issuingCertificate ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Award className="h-4 w-4 mr-2" />
+                    )}
                     Get Certificate
                   </Button>
                 )}
@@ -521,6 +1405,8 @@ const CourseDetail = () => {
           isOpen={showCertificate}
           onClose={() => setShowCertificate(false)}
           courseName={course.title}
+          certificateId={certificateId}
+          verificationUrl={verificationUrl}
           studentName={
             user?.user_metadata?.username ||
             user?.email?.split("@")[0] ||
@@ -533,6 +1419,157 @@ const CourseDetail = () => {
           })}
           instructorName={course.instructor_name || "Instructor"}
         />
+
+        <Dialog
+          open={createModuleOpen}
+          onOpenChange={(open) => {
+            setCreateModuleOpen(open);
+            if (!open) {
+              setNewModuleTitle("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Module</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreateModule();
+              }}
+            >
+              <div className="space-y-2">
+                <label
+                  htmlFor="new-module-title"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Module title
+                </label>
+                <Input
+                  id="new-module-title"
+                  value={newModuleTitle}
+                  onChange={(event) => setNewModuleTitle(event.target.value)}
+                  autoFocus
+                  placeholder="New module title"
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={creatingModule}
+                  onClick={() => setCreateModuleOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={creatingModule}>
+                  {creatingModule && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Create Module
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(moduleToRename)}
+          onOpenChange={(open) => {
+            if (open) return;
+
+            setModuleToRename(null);
+            setRenameModuleTitle("");
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Module</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleRenameModule();
+              }}
+            >
+              <div className="space-y-2">
+                <label
+                  htmlFor="module-title"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Module title
+                </label>
+                <Input
+                  id="module-title"
+                  value={renameModuleTitle}
+                  onChange={(event) => setRenameModuleTitle(event.target.value)}
+                  autoFocus
+                  placeholder="Module title"
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={renamingModule}
+                  onClick={() => {
+                    setModuleToRename(null);
+                    setRenameModuleTitle("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={renamingModule}>
+                  {renamingModule && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Save Module
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog
+          open={Boolean(lessonToDelete)}
+          onOpenChange={(open) => {
+            if (!open && !deletingLessonId) {
+              setLessonToDelete(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete lesson?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {lessonToDelete
+                  ? `Delete "${lessonToDelete.title}"? This action cannot be undone.`
+                  : "This action cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingLessonId)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!lessonToDelete || Boolean(deletingLessonId)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleDeleteLesson();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingLessonId && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog
           open={Boolean(moduleToDelete)}
@@ -625,39 +1662,167 @@ const CourseDetail = () => {
                           )}
                         >
                           <div className="flex items-center justify-between mb-4 gap-4">
-                            <div className="flex items-center gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
                               <span className="rounded-md bg-cyan-500/15 px-2 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
                                 {moduleIndex + 1}.{lessonIndex + 1}
                               </span>
-                              <h3 className="font-display text-xl font-semibold text-foreground dark:text-slate-50">
+                              <h3 className="min-w-0 font-display text-xl font-semibold text-foreground dark:text-slate-50">
                                 {lesson.title}
                               </h3>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex shrink-0 items-center gap-2">
+                              {isAdmin && (
+                                <>
+                                  <Select
+                                    value={
+                                      lesson.is_published
+                                        ? "published"
+                                        : "draft"
+                                    }
+                                    onValueChange={(value) =>
+                                      handleLessonPublishChange(
+                                        lesson,
+                                        value === "published",
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      aria-label={
+                                        lesson.is_published
+                                          ? "Lesson is published"
+                                          : "Lesson is draft"
+                                      }
+                                      title={
+                                        lesson.is_published
+                                          ? "Published"
+                                          : "Draft"
+                                      }
+                                      className="h-9 w-12 px-2"
+                                    >
+                                      {lesson.is_published ? (
+                                        <Eye className="h-4 w-4" />
+                                      ) : (
+                                        <EyeOff className="h-4 w-4" />
+                                      )}
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="published">
+                                        Published
+                                      </SelectItem>
+                                      <SelectItem value="draft">
+                                        Draft
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Select
+                                    value={lesson.completion_rule}
+                                    onValueChange={(value) =>
+                                      handleCompletionRuleChange(
+                                        lesson,
+                                        value as Lesson["completion_rule"],
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      aria-label={`Completion rule: ${lesson.completion_rule}`}
+                                      title={`Completion rule: ${lesson.completion_rule}`}
+                                      className="h-9 w-12 px-2"
+                                    >
+                                      {lesson.completion_rule === "read" ? (
+                                        <BookOpen className="h-4 w-4" />
+                                      ) : lesson.completion_rule === "quiz" ? (
+                                        <HelpCircle className="h-4 w-4" />
+                                      ) : lesson.completion_rule ===
+                                        "challenge" ? (
+                                        <Code className="h-4 w-4" />
+                                      ) : (
+                                        <CheckCircle className="h-4 w-4" />
+                                      )}
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="manual">
+                                        Manual
+                                      </SelectItem>
+                                      <SelectItem value="read">
+                                        After reading
+                                      </SelectItem>
+                                      <SelectItem value="quiz">
+                                        Quiz pass
+                                      </SelectItem>
+                                      <SelectItem value="challenge">
+                                        Challenge pass
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    title="Duplicate lesson"
+                                    aria-label="Duplicate lesson"
+                                    onClick={() =>
+                                      handleDuplicateLesson(lesson)
+                                    }
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    title="Delete lesson"
+                                    aria-label="Delete lesson"
+                                    onClick={() => setLessonToDelete(lesson)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    title="Remove module"
+                                    aria-label="Remove module"
+                                    onClick={() => setModuleToDelete(module)}
+                                  >
+                                    <Layers className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                               {isAdmin && (
                                 <Button
-                                  variant="destructive"
-                                  onClick={() => setModuleToDelete(module)}
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => duplicateLesson(lesson)}
+                                  title="Duplicate lesson"
+                                  aria-label="Duplicate lesson"
                                 >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Remove Module
+                                  <Copy className="h-4 w-4" />
                                 </Button>
                               )}
                               {isAdmin && (
                                 <Button
                                   variant="outline"
+                                  size="icon"
+                                  title="Edit lesson"
+                                  aria-label="Edit lesson"
                                   onClick={() => {
                                     setEditingLessonId(lesson.id);
                                     setEditingContent(lesson.content || "");
                                   }}
                                 >
-                                  <Edit2 className="h-4 w-4 mr-2" />
-                                  Edit Lesson
+                                  <Edit2 className="h-4 w-4" />
                                 </Button>
                               )}
                               <Button
                                 variant={isCompleted ? "secondary" : "outline"}
-                                size="sm"
+                                size="icon"
+                                title={
+                                  isCompleted
+                                    ? "Lesson completed"
+                                    : "Mark lesson complete"
+                                }
+                                aria-label={
+                                  isCompleted
+                                    ? "Lesson completed"
+                                    : "Mark lesson complete"
+                                }
                                 onClick={() => markLessonComplete(lesson.id)}
                                 disabled={isCompleted}
                                 className={cn(
@@ -666,20 +1831,19 @@ const CourseDetail = () => {
                                     "border-emerald-400/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
                                 )}
                               >
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                {isCompleted ? "Completed" : "Mark Complete"}
+                                <CheckCircle className="h-4 w-4" />
                               </Button>
                             </div>
                           </div>
 
                           {editingLessonId === lesson.id ? (
-                            <div className="space-y-4">
+                            <div className="max-h-[70vh] space-y-4 overflow-y-auto overscroll-contain pr-1">
                               <RichTextEditor
                                 value={editingContent}
                                 onChange={setEditingContent}
                               />
 
-                              <div className="flex justify-end gap-2">
+                              <div className="sticky bottom-0 z-20 flex justify-end gap-2 border-t border-border/60 bg-card/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80">
                                 <Button
                                   variant="outline"
                                   onClick={() => {
@@ -695,7 +1859,7 @@ const CourseDetail = () => {
                                   onClick={async () => {
                                     setSavingLessonId(lesson.id);
 
-                                    const { error } = await supabase
+                                    const { error } = await api
                                       .from("lessons")
                                       .update({ content: editingContent })
                                       .eq("id", lesson.id);
@@ -722,22 +1886,65 @@ const CourseDetail = () => {
                             <LessonContent content={lesson.content} />
                           )}
 
-                          {lesson.quiz && lesson.quiz.length > 0 && (
-                            <div className="mt-8 space-y-4">
-                              <h4 className="font-display text-lg font-semibold flex items-center gap-2">
-                                <HelpCircle className="h-5 w-5 text-primary" />
-                                Knowledge Check
-                              </h4>
-                              <Quiz
-                                questions={lesson.quiz}
-                                onComplete={(score, total) => {
-                                  toast.success(
-                                    `Quiz completed! You scored ${score}/${total}`,
-                                  );
-                                }}
-                              />
-                            </div>
-                          )}
+                          {(() => {
+                            const quiz = normalizeQuizData(lesson.quiz);
+
+                            if (quiz.questions.length === 0) return null;
+
+                            return (
+                              <section className="mt-8 border-t border-border/60 pt-7">
+                                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="rounded-xl bg-primary/10 p-2.5">
+                                      <HelpCircle className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                        Quick practice
+                                      </p>
+                                      <h4 className="mt-1 font-display text-xl font-semibold">
+                                        Check what you learned
+                                      </h4>
+                                      <p className="mt-1 text-sm text-muted-foreground">
+                                        Answer {quiz.questions.length}{" "}
+                                        {quiz.questions.length === 1
+                                          ? "question"
+                                          : "questions"}{" "}
+                                        to finish this knowledge check.
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {quizAttemptsByLesson[lesson.id] && (
+                                    <Badge
+                                      variant="secondary"
+                                      className={
+                                        quizAttemptsByLesson[lesson.id].passed
+                                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                                          : "bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                                      }
+                                    >
+                                      Last score:{" "}
+                                      {quizAttemptsByLesson[lesson.id].score}/
+                                      {quizAttemptsByLesson[lesson.id].total}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="rounded-xl bg-muted/20 p-4 sm:p-5">
+                                  <Quiz
+                                    questions={quiz}
+                                    onComplete={(score, total, details) => {
+                                      handleQuizComplete(
+                                        lesson,
+                                        score,
+                                        total,
+                                        details,
+                                      );
+                                    }}
+                                  />
+                                </div>
+                              </section>
+                            );
+                          })()}
 
                           {lesson.challenge && (
                             <div className="mt-8 space-y-4">
@@ -753,6 +1960,13 @@ const CourseDetail = () => {
                                     toast.success(
                                       "Challenge completed! Great job!",
                                     );
+                                    if (
+                                      lesson.completion_rule === "challenge"
+                                    ) {
+                                      markLessonComplete(lesson.id, {
+                                        silent: true,
+                                      });
+                                    }
                                   }
                                 }}
                               />
@@ -769,28 +1983,212 @@ const CourseDetail = () => {
                 <div className="hidden lg:block fixed right-4 top-[140px] bottom-4 w-80">
                   <div className="glass-card h-full flex flex-col">
                     <div className="p-4 border-b border-border/50">
-                      <h3 className="font-semibold">Course Content</h3>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-semibold">Course Content</h3>
+                        {isAdmin && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setCreateModuleOpen(true)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {completedCount} / {allLessons.length} lessons completed
                       </p>
+                      <div className="relative mt-3">
+                        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={lessonSearchQuery}
+                          onChange={(event) =>
+                            setLessonSearchQuery(event.target.value)
+                          }
+                          placeholder="Search lessons"
+                          className="h-9 pl-8"
+                        />
+                      </div>
                     </div>
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="min-h-0 flex-1">
                       <Accordion
                         type="multiple"
-                        defaultValue={modules.map((m) => m.id)}
+                        value={openModuleIds}
+                        onValueChange={setOpenModuleIds}
                         className="p-2"
                       >
-                        {modules.map((module) => (
+                        {filteredModules.length === 0 && (
+                          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                            No lessons match your search.
+                          </div>
+                        )}
+                        {filteredModules.map((module) => (
                           <AccordionItem
                             key={module.id}
                             value={module.id}
-                            className="border-none"
+                            className={cn(
+                              "border-none rounded-lg",
+                              dragOverTarget === `module-${module.id}` &&
+                                "bg-primary/5 ring-1 ring-primary/30",
+                            )}
+                            onDragOver={(event) => {
+                              if (
+                                !isAdmin ||
+                                !canReorderContent ||
+                                !draggingItem ||
+                                (draggingItem.type === "module" &&
+                                  draggingItem.moduleId === module.id)
+                              ) {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              setDragOverTarget(`module-${module.id}`);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverTarget === `module-${module.id}`) {
+                                setDragOverTarget(null);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              if (!canReorderContent || !draggingItem) return;
+                              event.preventDefault();
+
+                              if (draggingItem?.type === "module") {
+                                handleModuleDrop(module.id);
+                                return;
+                              }
+
+                              handleLessonDrop(module.id);
+                            }}
                           >
                             <AccordionTrigger className="px-3 py-2 hover:bg-secondary/50 rounded-lg text-sm font-medium">
-                              {module.title}
+                              <span className="flex min-w-0 items-center gap-2">
+                                {canReorderContent && (
+                                  <span
+                                    draggable
+                                    aria-label={`Drag ${module.title}`}
+                                    className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-secondary active:cursor-grabbing"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                    }}
+                                    onDragStart={(event) => {
+                                      event.stopPropagation();
+                                      event.dataTransfer.effectAllowed = "move";
+                                      setDraggingItem({
+                                        type: "module",
+                                        moduleId: module.id,
+                                      });
+                                    }}
+                                    onDragEnd={() => {
+                                      setDraggingItem(null);
+                                      setDragOverTarget(null);
+                                    }}
+                                  >
+                                    <GripVertical className="h-4 w-4" />
+                                  </span>
+                                )}
+                                <span className="truncate">{module.title}</span>
+                                {isAdmin && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`${
+                                      module.is_published
+                                        ? "Unpublish"
+                                        : "Publish"
+                                    } ${module.title}`}
+                                    className={cn(
+                                      "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                                      module.is_published
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                                        : "bg-amber-500/10 text-amber-700 dark:text-amber-200",
+                                    )}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleModulePublishChange(
+                                        module,
+                                        !module.is_published,
+                                      );
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key !== "Enter" &&
+                                        event.key !== " "
+                                      ) {
+                                        return;
+                                      }
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleModulePublishChange(
+                                        module,
+                                        !module.is_published,
+                                      );
+                                    }}
+                                  >
+                                    {module.is_published ? "Live" : "Draft"}
+                                  </span>
+                                )}
+                                {isAdmin && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Rename ${module.title}`}
+                                    className="rounded p-0.5 text-muted-foreground hover:bg-secondary"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      openRenameModuleDialog(module);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key !== "Enter" &&
+                                        event.key !== " "
+                                      ) {
+                                        return;
+                                      }
+
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      openRenameModuleDialog(module);
+                                    }}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
+                              </span>
                             </AccordionTrigger>
                             <AccordionContent className="pb-0">
-                              <div className="space-y-1 pl-2">
+                              <div
+                                className="space-y-1 pl-2"
+                                onDragOver={(event) => {
+                                  if (
+                                    !isAdmin ||
+                                    draggingItem?.type !== "lesson" ||
+                                    draggingItem.sourceModuleId === module.id
+                                  ) {
+                                    return;
+                                  }
+
+                                  event.preventDefault();
+                                  setDragOverTarget(`module-${module.id}`);
+                                }}
+                                onDrop={(event) => {
+                                  if (
+                                    !canReorderContent ||
+                                    draggingItem?.type !== "lesson"
+                                  ) {
+                                    return;
+                                  }
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleLessonDrop(module.id);
+                                }}
+                              >
                                 {module.lessons.map((lesson) => {
                                   const isCompleted = completedLessons.includes(
                                     lesson.id,
@@ -798,18 +2196,77 @@ const CourseDetail = () => {
                                   return (
                                     <button
                                       key={lesson.id}
+                                      draggable={canReorderContent}
+                                      data-lesson-id={lesson.id}
                                       ref={(node) => {
                                         lessonItemRefs.current[lesson.id] =
                                           node;
                                       }}
                                       onClick={() => scrollToLesson(lesson.id)}
+                                      onDragStart={(event) => {
+                                        if (!canReorderContent) return;
+
+                                        event.stopPropagation();
+                                        event.dataTransfer.effectAllowed =
+                                          "move";
+                                        setDraggingItem({
+                                          type: "lesson",
+                                          lessonId: lesson.id,
+                                          sourceModuleId: module.id,
+                                        });
+                                      }}
+                                      onDragOver={(event) => {
+                                        if (
+                                          !canReorderContent ||
+                                          draggingItem?.type !== "lesson" ||
+                                          draggingItem.lessonId === lesson.id
+                                        ) {
+                                          return;
+                                        }
+
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setDragOverTarget(
+                                          `lesson-${lesson.id}`,
+                                        );
+                                      }}
+                                      onDragLeave={() => {
+                                        if (
+                                          dragOverTarget ===
+                                          `lesson-${lesson.id}`
+                                        ) {
+                                          setDragOverTarget(null);
+                                        }
+                                      }}
+                                      onDrop={(event) => {
+                                        if (
+                                          !canReorderContent ||
+                                          draggingItem?.type !== "lesson"
+                                        ) {
+                                          return;
+                                        }
+
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        handleLessonDrop(module.id, lesson.id);
+                                      }}
+                                      onDragEnd={() => {
+                                        setDraggingItem(null);
+                                        setDragOverTarget(null);
+                                      }}
                                       className={cn(
                                         "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors",
                                         currentLessonId === lesson.id
                                           ? "bg-primary/10 text-primary"
                                           : "hover:bg-secondary/50",
+                                        dragOverTarget ===
+                                          `lesson-${lesson.id}` &&
+                                          "ring-1 ring-primary/40",
                                       )}
                                     >
+                                      {canReorderContent && (
+                                        <GripVertical className="mt-0.5 h-4 w-4 flex-shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing" />
+                                      )}
                                       {isCompleted ? (
                                         <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                                       ) : currentLessonId === lesson.id ? (

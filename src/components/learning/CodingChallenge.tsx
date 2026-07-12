@@ -3,7 +3,7 @@ import { Play, CheckCircle, XCircle, RotateCcw, Lightbulb, Loader2 } from "lucid
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CodeEditor } from "./CodeEditor";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -44,7 +44,7 @@ export const CodingChallenge = ({ challenge, lessonId, onComplete }: CodingChall
     const checkCompletion = async () => {
       if (!user || !lessonId) return;
       
-      const { data } = await supabase
+      const { data } = await api
         .from("user_challenge_completions")
         .select("id, code_submitted")
         .eq("user_id", user.id)
@@ -70,7 +70,7 @@ export const CodingChallenge = ({ challenge, lessonId, onComplete }: CodingChall
     
     setIsSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await api
         .from("user_challenge_completions")
         .upsert({
           user_id: user.id,

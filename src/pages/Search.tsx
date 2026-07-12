@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TagBadge } from "@/components/qa/TagBadge";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { formatDistanceToNow } from "date-fns";
 import { 
   Search as SearchIcon, 
@@ -116,7 +116,7 @@ const Search = () => {
     try {
       // Search questions
       if (contentType === "all" || contentType === "questions") {
-        const { data: questions } = await supabase
+        const { data: questions } = await api
           .from("questions")
           .select(`
             id, title, content, votes_count, answers_count, is_solved, created_at,
@@ -134,7 +134,7 @@ const Search = () => {
 
       // Search answers
       if (contentType === "all" || contentType === "answers") {
-        const { data: answers } = await supabase
+        const { data: answers } = await api
           .from("answers")
           .select(`
             id, content, votes_count, is_accepted, created_at, question_id,
@@ -152,7 +152,7 @@ const Search = () => {
 
       // Search snippets
       if (contentType === "all" || contentType === "snippets") {
-        const { data: snippets } = await supabase
+        const { data: snippets } = await api
           .from("code_snippets")
           .select(`
             id, title, description, language, votes_count, views_count, created_at,

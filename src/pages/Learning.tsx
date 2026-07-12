@@ -4,29 +4,15 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import {
   BookOpen, Code, Database, Globe, Layers, Lock,
-  Play, List, Users, Star, ChevronRight, CheckCircle, Loader2, Trash2
+  Play, List, Users, Star, ChevronRight, CheckCircle, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { CreateCourseDialog } from "@/components/learning/CreateCourseDialog";
-import { EditCourseDialog } from "@/components/learning/EditCourseDialog";
 import { Course, UserCourseProgress } from "@/types/learning";
-import { toast } from "sonner";
 
 const iconMap: Record<string, React.ElementType> = {
   Code,
@@ -45,19 +31,9 @@ interface CourseWithProgress extends Course {
 
 interface CourseCardProps {
   course: CourseWithProgress;
-  isAdmin: boolean;
-  deletingCourseId: string | null;
-  onEditComplete: () => void;
-  onRequestDelete: (course: CourseWithProgress) => void;
 }
 
-const CourseCard = ({
-  course,
-  isAdmin,
-  deletingCourseId,
-  onEditComplete,
-  onRequestDelete,
-}: CourseCardProps) => {
+const CourseCard = ({ course }: CourseCardProps) => {
   const Icon = iconMap[course.icon || "Code"] || Code;
   const levelColors = {
     Beginner: "bg-green-500/10 text-green-500",
@@ -75,27 +51,6 @@ const CourseCard = ({
           <Badge variant="secondary" className={levelColors[course.level]}>
             {course.level}
           </Badge>
-          {isAdmin && (
-            <>
-              <EditCourseDialog
-                course={course}
-                onCourseUpdated={onEditComplete}
-                isAdmin={isAdmin}
-              />
-              <Button
-                variant="destructive"
-                size="icon"
-                disabled={deletingCourseId === course.id}
-                onClick={() => onRequestDelete(course)}
-              >
-                {deletingCourseId === course.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
@@ -165,16 +120,13 @@ const Learning = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [courses, setCourses] = useState<CourseWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
-  const [courseToDelete, setCourseToDelete] = useState<CourseWithProgress | null>(null);
-  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
   const { user } = useAuth();
-  const { isAdmin } = useIsAdmin();
 
   const fetchCourses = async () => {
     setLoading(true);
     
     // Fetch courses with lesson counts
-    const { data: coursesData, error: coursesError } = await supabase
+    const { data: coursesData, error: coursesError } = await api
       .from("courses")
       .select(`
         *,
@@ -194,7 +146,7 @@ const Learning = () => {
     // Fetch user progress if logged in
     let progressMap: Record<string, number> = {};
     if (user) {
-      const { data: progressData } = await supabase
+      const { data: progressData } = await api
         .from("user_course_progress")
         .select("course_id, progress_percent")
         .eq("user_id", user.id);
@@ -230,81 +182,6 @@ const Learning = () => {
     fetchCourses();
   }, [user]);
 
-  const handleDeleteCourse = async () => {
-    if (!courseToDelete) return;
-
-    setDeletingCourseId(courseToDelete.id);
-
-    const { error: progressError } = await supabase
-      .from("user_course_progress")
-      .delete()
-      .eq("course_id", courseToDelete.id);
-
-    if (progressError) {
-      console.error("Error deleting course progress:", progressError);
-      toast.error("Failed to delete course");
-      setDeletingCourseId(null);
-      return;
-    }
-
-    const { data: modulesData, error: modulesFetchError } = await supabase
-      .from("course_modules")
-      .select("id")
-      .eq("course_id", courseToDelete.id);
-
-    if (modulesFetchError) {
-      console.error("Error fetching course modules:", modulesFetchError);
-      toast.error("Failed to delete course");
-      setDeletingCourseId(null);
-      return;
-    }
-
-    const moduleIds = (modulesData || []).map((module) => module.id);
-
-    if (moduleIds.length > 0) {
-      const { error: lessonsError } = await supabase
-        .from("lessons")
-        .delete()
-        .in("module_id", moduleIds);
-
-      if (lessonsError) {
-        console.error("Error deleting course lessons:", lessonsError);
-        toast.error("Failed to delete course");
-        setDeletingCourseId(null);
-        return;
-      }
-    }
-
-    const { error: modulesError } = await supabase
-      .from("course_modules")
-      .delete()
-      .eq("course_id", courseToDelete.id);
-
-    if (modulesError) {
-      console.error("Error deleting course modules:", modulesError);
-      toast.error("Failed to delete course");
-      setDeletingCourseId(null);
-      return;
-    }
-
-    const { error: courseError } = await supabase
-      .from("courses")
-      .delete()
-      .eq("id", courseToDelete.id);
-
-    if (courseError) {
-      console.error("Error deleting course:", courseError);
-      toast.error("Failed to delete course");
-      setDeletingCourseId(null);
-      return;
-    }
-
-    toast.success("Course deleted successfully!");
-    setDeletingCourseId(null);
-    setCourseToDelete(null);
-    fetchCourses();
-  };
-
   const inProgressCourses = courses.filter((c) => c.progress && c.progress > 0);
   const filteredCourses = activeTab === "all" 
     ? courses 
@@ -317,46 +194,6 @@ const Learning = () => {
       <Navbar />
       <main className="pt-24 pb-16">
         <div className="container max-w-7xl mx-auto px-4">
-          {isAdmin && (
-            <AlertDialog
-              open={Boolean(courseToDelete)}
-              onOpenChange={(open) => {
-                if (!open && !deletingCourseId) {
-                  setCourseToDelete(null);
-                }
-              }}
-            >
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete course?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {courseToDelete
-                      ? `Delete "${courseToDelete.title}" and all of its modules, lessons, and progress records? This action cannot be undone.`
-                      : "This action cannot be undone."}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={Boolean(deletingCourseId)}>
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={(event) => {
-                      event.preventDefault();
-                      handleDeleteCourse();
-                    }}
-                    disabled={!courseToDelete || Boolean(deletingCourseId)}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {deletingCourseId && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-
           {/* Header */}
           <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 bg-primary/5 mb-6">
@@ -371,13 +208,6 @@ const Learning = () => {
               Structured courses designed by industry experts. Learn at your own pace
               with hands-on projects and real-world examples.
             </p>
-            
-            {/* Admin: Create Course Button */}
-            {isAdmin && (
-              <div className="mt-6">
-                <CreateCourseDialog onCourseCreated={fetchCourses} />
-              </div>
-            )}
           </div>
 
           {/* Stats */}
@@ -422,11 +252,6 @@ const Learning = () => {
                       ? "Start a course to see your progress here"
                       : "No courses available for this filter"}
                   </p>
-                  {isAdmin && (
-                    <div className="mt-4">
-                      <CreateCourseDialog onCourseCreated={fetchCourses} />
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -434,10 +259,6 @@ const Learning = () => {
                     <CourseCard
                       key={course.id}
                       course={course}
-                      isAdmin={isAdmin}
-                      deletingCourseId={deletingCourseId}
-                      onEditComplete={fetchCourses}
-                      onRequestDelete={setCourseToDelete}
                     />
                   ))}
                 </div>

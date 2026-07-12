@@ -34,6 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             "answers_count",
             "updated_at",
             "is_staff",
+            "is_superuser",
             "is_active",
             "date_joined",
         )
@@ -44,6 +45,7 @@ class UserSerializer(serializers.ModelSerializer):
             "answers_count",
             "updated_at",
             "is_staff",
+            "is_superuser",
             "is_active",
             "date_joined",
         )

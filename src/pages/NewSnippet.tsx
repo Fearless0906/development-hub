@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, X, Code2 } from "lucide-react";
@@ -67,7 +67,7 @@ const NewSnippet = () => {
 
   const fetchTags = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("tags")
         .select("id, name, slug, color")
         .order("usage_count", { ascending: false });
@@ -83,7 +83,7 @@ const NewSnippet = () => {
     if (!forkId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("code_snippets")
         .select(`
           title,
@@ -141,7 +141,7 @@ const NewSnippet = () => {
 
     try {
       // Create snippet
-      const { data: snippet, error: snippetError } = await supabase
+      const { data: snippet, error: snippetError } = await api
         .from("code_snippets")
         .insert({
           user_id: user.id,
@@ -159,14 +159,14 @@ const NewSnippet = () => {
 
       // Update forks count if this is a fork
       if (forkId) {
-        const { data: forkedSnippet } = await supabase
+        const { data: forkedSnippet } = await api
           .from("code_snippets")
           .select("forks_count")
           .eq("id", forkId)
           .single();
         
         if (forkedSnippet) {
-          await supabase
+          await api
             .from("code_snippets")
             .update({ forks_count: forkedSnippet.forks_count + 1 })
             .eq("id", forkId);
@@ -175,7 +175,7 @@ const NewSnippet = () => {
 
       // Add tags
       if (selectedTags.length > 0) {
-        const { error: tagsError } = await supabase
+        const { error: tagsError } = await api
           .from("snippet_tags")
           .insert(
             selectedTags.map(tag => ({

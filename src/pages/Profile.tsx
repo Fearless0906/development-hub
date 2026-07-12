@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -119,7 +119,7 @@ const Profile = () => {
     if (!profileId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("profiles")
         .select("*")
         .eq("id", profileId)
@@ -147,7 +147,7 @@ const Profile = () => {
     if (!profileId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("questions")
         .select(`
           *,
@@ -180,7 +180,7 @@ const Profile = () => {
     if (!profileId) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from("answers")
         .select(`
           id,
@@ -225,22 +225,22 @@ const Profile = () => {
       const fileName = `${user.id}/avatar.${fileExt}`;
 
       // Delete old avatar if exists
-      await supabase.storage.from("avatars").remove([fileName]);
+      await api.storage.from("avatars").remove([fileName]);
 
       // Upload new avatar
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await api.storage
         .from("avatars")
         .upload(fileName, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = api.storage
         .from("avatars")
         .getPublicUrl(fileName);
 
       // Update profile
-      const { error: updateError } = await supabase
+      const { error: updateError } = await api
         .from("profiles")
         .update({ avatar_url: publicUrl })
         .eq("id", user.id);
@@ -263,7 +263,7 @@ const Profile = () => {
     setIsSaving(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await api
         .from("profiles")
         .update({
           username: editForm.username,
