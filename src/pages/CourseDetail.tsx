@@ -8,7 +8,6 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
 import {
   BookOpen,
   Code,
@@ -1459,7 +1458,6 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
             </Button>
           </div>
         </main>
-        {!adminView && <Footer />}
       </div>
     );
   }

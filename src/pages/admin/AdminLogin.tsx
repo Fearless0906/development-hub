@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +30,7 @@ const usernameSchema = z
     "Username can only contain letters, numbers, and underscores",
   );
 
-const Auth = () => {
+const AdminAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,15 +42,20 @@ const Auth = () => {
     username?: string;
   }>({});
 
-  const { user, signIn, signUp, signInWithGitHub, signInWithGoogle } =
+  const { user, loading: authLoading, signIn, signUp, signInWithGitHub, signInWithGoogle } =
     useAuth();
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      navigate("/");
+    if (authLoading || adminLoading || !user) {
+      return;
     }
-  }, [user, navigate]);
+
+    if (isAdmin) {
+      navigate("/admin/dashboard", { replace: true });
+    }
+  }, [adminLoading, authLoading, isAdmin, navigate, user]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string; username?: string } =
@@ -326,4 +332,4 @@ const Auth = () => {
   );
 };
 
-export default Auth;
+export default AdminAuth;

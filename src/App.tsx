@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
@@ -23,6 +23,10 @@ import Playground from "./pages/Playground";
 import NotFound from "./pages/NotFound";
 import OAuthCallback from "./pages/OAuthCallback";
 import Quiz from "./pages/Quiz";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminAuth from "./pages/admin/AdminLogin";
+import AdminCourses from "./pages/admin/AdminCourses";
+import AdminLessons from "./pages/admin/AdminLesson";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +66,15 @@ const App = () => (
                 path="/auth/callback/:provider"
                 element={<OAuthCallback />}
               />
+              <Route
+                path="/admin"
+                element={<Navigate to="/admin/login" replace />}
+              />
+              <Route path="/admin/login" element={<AdminAuth />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
+              <Route path="/admin/courses" element={<AdminCourses />} />
+              <Route path="/admin/lessons" element={<AdminLessons />} />
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

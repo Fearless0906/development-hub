@@ -159,6 +159,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    setSession(null);
+    setUser(null);
     toast.success("Signed out successfully");
   };
 

@@ -1,7 +1,7 @@
 import axios, { AxiosError } from "axios";
 
 export const API_URL = (
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1"
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 ).replace(/\/$/, "");
 const TOKEN_KEY = "cds_django_token";
 const REFRESH_TOKEN_KEY = "cds_django_refresh_token";
