@@ -445,17 +445,26 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
       )
       .join("");
 
-    const frame = document.createElement("iframe");
-    frame.style.position = "fixed";
-    frame.style.width = "0";
-    frame.style.height = "0";
-    frame.style.border = "0";
-    frame.srcdoc = `<!doctype html>
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      toast.error("Allow pop-ups to open the course export preview");
+      return;
+    }
+
+    previewWindow.document.open();
+    previewWindow.document.write(`<!doctype html>
       <html><head><title>${escapeHtml(course.title)} - Course</title>
       <style>
         @page { size: A4; margin: 18mm; }
         * { box-sizing: border-box; }
-        body { margin: 0; color: #111827; background: #fff; font: 11pt/1.6 Arial, sans-serif; }
+        body { margin: 0; color: #111827; background: #e5e7eb; font: 11pt/1.6 Arial, sans-serif; }
+        .toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; color: #fff; background: #0f172a; box-shadow: 0 2px 8px rgba(15, 23, 42, .2); }
+        .toolbar p { margin: 0; }
+        .toolbar strong { display: block; }
+        .toolbar span { color: #cbd5e1; font-size: 9pt; }
+        .toolbar button { padding: 9px 16px; border: 0; border-radius: 7px; color: #fff; background: #0d9488; font: inherit; font-weight: 700; cursor: pointer; }
+        .toolbar button:hover { background: #0f766e; }
+        .page { width: min(210mm, calc(100% - 32px)); min-height: 297mm; margin: 24px auto; padding: 18mm; background: #fff; box-shadow: 0 8px 30px rgba(15, 23, 42, .14); }
         header { padding-bottom: 18px; border-bottom: 2px solid #0f766e; }
         h1 { margin: 4px 0 8px; font-size: 26pt; line-height: 1.15; }
         .eyebrow { margin: 0; color: #0f766e; font-size: 9pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
@@ -472,7 +481,17 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         table { width: 100%; border-collapse: collapse; } th, td { padding: 6px; border: 1px solid #d1d5db; text-align: left; }
         img { max-width: 100%; height: auto; }
         pre, blockquote, table, img { break-inside: avoid; }
+        @media print {
+          body { background: #fff; }
+          .toolbar { display: none; }
+          .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+        }
       </style></head><body>
+        <div class="toolbar">
+          <p><strong>Course export preview</strong><span>Review all lessons before saving the PDF.</span></p>
+          <button type="button" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <main class="page">
         <header>
           <p class="eyebrow">CDS Crash Course</p>
           <h1>${escapeHtml(course.title)}</h1>
@@ -482,14 +501,10 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
             <span>${allLessons.length} lessons</span>
             ${course.instructor_name ? `<span>By ${escapeHtml(course.instructor_name)}</span>` : ""}
           </div>
-        </header>${moduleHtml}
-      </body></html>`;
-    document.body.appendChild(frame);
-    frame.onload = () => {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-      window.setTimeout(() => frame.remove(), 1000);
-    };
+        </header>${moduleHtml}</main>
+      </body></html>`);
+    previewWindow.document.close();
+    previewWindow.focus();
   };
 
   const handleImportPdf = async (file: File) => {
