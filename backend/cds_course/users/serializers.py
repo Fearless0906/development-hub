@@ -18,6 +18,15 @@ class CreateUserSerializer(UserCreateSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Derive live totals for accounts created before activity signals were
+        # introduced; new activity also persists these values automatically.
+        from .signals import get_user_achievement_totals
+
+        data.update(get_user_achievement_totals(instance.id))
+        return data
+
     class Meta:
         model = User
         fields = (

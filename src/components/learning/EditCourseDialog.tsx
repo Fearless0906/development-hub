@@ -30,6 +30,7 @@ export const EditCourseDialog = ({
     instructorName: course.instructor_name || "",
     instructorTitle: course.instructor_title || "",
     topics: (course.topics || []).join(", "),
+    thumbnailUrl: course.thumbnail_url || "",
   });
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export const EditCourseDialog = ({
         instructorName: course.instructor_name || "",
         instructorTitle: course.instructor_title || "",
         topics: (course.topics || []).join(", "),
+        thumbnailUrl: course.thumbnail_url || "",
       });
     }
   }, [course, open]);
@@ -74,6 +76,7 @@ export const EditCourseDialog = ({
         topics: formData.topics
           ? formData.topics.split(",").map((topic) => topic.trim())
           : [],
+        thumbnail_url: formData.thumbnailUrl.trim(),
       })
       .eq("id", course.id);
 
@@ -177,6 +180,27 @@ export const EditCourseDialog = ({
                 placeholder="e.g., Senior Developer"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`thumbnail-${course.id}`}>
+              Thumbnail URL (optional)
+            </Label>
+            <Input
+              id={`thumbnail-${course.id}`}
+              type="url"
+              value={formData.thumbnailUrl}
+              onChange={(e) =>
+                setFormData({ ...formData, thumbnailUrl: e.target.value })
+              }
+              placeholder="https://example.com/course-thumbnail.jpg"
+            />
+            {formData.thumbnailUrl && (
+              <img
+                src={formData.thumbnailUrl}
+                alt="Course thumbnail preview"
+                className="h-32 w-full rounded-lg border border-border bg-white p-2 object-contain dark:bg-slate-950"
+              />
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor={`topics-${course.id}`}>Topics (comma-separated)</Label>

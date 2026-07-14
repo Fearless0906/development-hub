@@ -14,7 +14,7 @@ import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { CreateCourseDialog } from "@/components/learning/CreateCourseDialog";
-import { Course, UserCourseProgress } from "@/types/learning";
+import { Course, CourseModule, UserCourseProgress } from "@/types/learning";
 
 const iconMap: Record<string, React.ElementType> = {
   Code,
@@ -46,9 +46,17 @@ const CourseCard = ({ course }: CourseCardProps) => {
   return (
     <div className="glass-card-hover p-6 flex flex-col h-full">
       <div className="flex items-start justify-between mb-4">
-        <div className="p-3 rounded-xl bg-primary/10">
-          <Icon className="h-6 w-6 text-primary" />
-        </div>
+        {course.thumbnail_url ? (
+          <img
+            src={course.thumbnail_url}
+            alt={`${course.title} thumbnail`}
+            className="h-14 w-20 rounded-xl border border-border/60 bg-white p-1 object-contain dark:bg-slate-950"
+          />
+        ) : (
+          <div className="p-3 rounded-xl bg-primary/10">
+            <Icon className="h-6 w-6 text-primary" />
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className={levelColors[course.level]}>
             {course.level}
@@ -128,23 +136,34 @@ const Learning = () => {
   const fetchCourses = async () => {
     setLoading(true);
     
-    // Fetch courses with lesson counts
-    const { data: coursesData, error: coursesError } = await api
-      .from("courses")
-      .select(`
-        *,
-        course_modules (
-          id,
-          lessons (id)
-        )
-      `)
-      .order("created_at", { ascending: false });
+    // The Django API returns courses and modules from separate endpoints. Fetch
+    // both so the cards can derive their counts from the actual course content.
+    const [
+      { data: coursesData, error: coursesError },
+      { data: modulesData, error: modulesError },
+    ] = await Promise.all([
+      api
+        .from("courses")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      api.from("course_modules").select("course_id, lessons"),
+    ]);
 
-    if (coursesError) {
-      console.error("Error fetching courses:", coursesError);
+    if (coursesError || modulesError) {
+      console.error("Error fetching course content:", coursesError || modulesError);
       setLoading(false);
       return;
     }
+
+    const modulesByCourse = ((modulesData || []) as CourseModule[]).reduce(
+      (grouped: Record<string, CourseModule[]>, module) => {
+        const courseId = module.course_id;
+        if (!grouped[courseId]) grouped[courseId] = [];
+        grouped[courseId].push(module);
+        return grouped;
+      },
+      {} as Record<string, CourseModule[]>,
+    );
 
     // Fetch user progress if logged in
     let progressMap: Record<string, number> = {};
@@ -155,7 +174,7 @@ const Learning = () => {
         .eq("user_id", user.id);
 
       if (progressData) {
-        progressMap = progressData.reduce((acc, p) => {
+        progressMap = (progressData as Pick<UserCourseProgress, "course_id" | "progress_percent">[]).reduce((acc, p) => {
           acc[p.course_id] = p.progress_percent;
           return acc;
         }, {} as Record<string, number>);
@@ -163,17 +182,18 @@ const Learning = () => {
     }
 
     // Transform courses with progress and lesson counts
-    const transformedCourses: CourseWithProgress[] = (coursesData || []).map((course: any) => {
-      const lessonsCount = course.course_modules?.reduce(
-        (sum: number, m: any) => sum + (m.lessons?.length || 0),
-        0
-      ) || 0;
+    const transformedCourses: CourseWithProgress[] = ((coursesData || []) as Course[]).map((course) => {
+      const courseModules = modulesByCourse[course.id] || [];
+      const lessonsCount = courseModules.reduce(
+        (sum, module) => sum + (module.lessons?.length || 0),
+        0,
+      );
 
       return {
         ...course,
         progress: progressMap[course.id] || undefined,
         lessonsCount,
-        modulesCount: course.course_modules?.length || 0,
+        modulesCount: courseModules.length,
       };
     });
 

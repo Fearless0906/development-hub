@@ -278,6 +278,7 @@ const EditCourseDialog = ({ course, onClose, onSaved }: EditProps) => {
   const [category, setCategory] = useState(course.category || "");
   const [level, setLevel] = useState(course.level);
   const [tagsStr, setTagsStr] = useState((course.tags || []).join(", "));
+  const [thumbnailUrl, setThumbnailUrl] = useState(course.thumbnail_url || "");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -293,6 +294,7 @@ const EditCourseDialog = ({ course, onClose, onSaved }: EditProps) => {
         category: category || null,
         level,
         tags,
+        thumbnail_url: thumbnailUrl.trim(),
       })
       .eq("id", course.id);
     setSaving(false);
@@ -344,6 +346,22 @@ const EditCourseDialog = ({ course, onClose, onSaved }: EditProps) => {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Thumbnail URL (optional)</Label>
+            <Input
+              type="url"
+              value={thumbnailUrl}
+              onChange={(e) => setThumbnailUrl(e.target.value)}
+              placeholder="https://example.com/course-thumbnail.jpg"
+            />
+            {thumbnailUrl && (
+              <img
+                src={thumbnailUrl}
+                alt="Course thumbnail preview"
+                className="h-32 w-full rounded-lg border border-border bg-white p-2 object-contain dark:bg-slate-950"
+              />
+            )}
           </div>
           <div className="space-y-2">
             <Label>Tags (comma separated)</Label>

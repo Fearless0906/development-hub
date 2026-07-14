@@ -36,7 +36,6 @@ import {
   EyeOff,
   LockKeyhole,
   StickyNote,
-  ClipboardList,
   Target,
   FolderKanban,
   UserRound,
@@ -177,6 +176,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
   const lessonItemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lessonSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const courseContentScrollRef = useRef<HTMLDivElement | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [savingLessonId, setSavingLessonId] = useState<string | null>(null);
@@ -193,7 +193,9 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   );
   const [reviews, setReviews] = useState<CourseReview[]>([]);
   const [reviewRating, setReviewRating] = useState(5);
+  const [hoveredReviewRating, setHoveredReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
+  const reviewTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [savingReview, setSavingReview] = useState(false);
   const [certificateRecord, setCertificateRecord] =
     useState<CourseCertificateRecord | null>(null);
@@ -232,7 +234,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
       );
 
       if (userReview) {
-        setReviewRating(userReview.rating);
+        setReviewRating(Number(userReview.rating));
         setReviewText(userReview.review || "");
       }
     }
@@ -394,26 +396,75 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
     }
   }, [adminLoading, adminView, authLoading, isAdmin, navigate, user]);
 
-  // useEffect(() => {
-  //   if (!pendingLessonId || currentLessonId !== pendingLessonId) return;
+  useEffect(() => {
+    if (!pendingLessonId || currentLessonId !== pendingLessonId) return;
 
-  //   requestAnimationFrame(() => {
-  //     lessonItemRefs.current[pendingLessonId]?.scrollIntoView({
-  //       behavior: "smooth",
-  //       block: "nearest",
-  //     });
-  //     lessonSectionRefs.current[pendingLessonId]?.scrollIntoView({
-  //       behavior: "smooth",
-  //       block: "start",
-  //     });
-  //     setPendingLessonId(null);
-  //   });
-  // }, [currentLessonId, pendingLessonId]);
+    const frame = requestAnimationFrame(() => {
+      lessonItemRefs.current[pendingLessonId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+      lessonSectionRefs.current[pendingLessonId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setPendingLessonId(null);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [currentLessonId, pendingLessonId]);
 
   const allLessons = useMemo(
     () => modules.flatMap((m) => m.lessons),
     [modules],
   );
+
+  useEffect(() => {
+    if (!currentLessonId || pendingLessonId) return;
+
+    const activeModule = modules.find((module) =>
+      module.lessons.some((lesson) => lesson.id === currentLessonId),
+    );
+    if (!activeModule) return;
+
+    setOpenModuleIds((ids) =>
+      ids.includes(activeModule.id) ? ids : [...ids, activeModule.id],
+    );
+
+    let innerFrame: number | null = null;
+    const frame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(() => {
+        const activeItem = lessonItemRefs.current[currentLessonId];
+        const viewport = courseContentScrollRef.current?.querySelector(
+          "[data-radix-scroll-area-viewport]",
+        ) as HTMLDivElement | null;
+        if (!activeItem || !viewport) return;
+
+        const itemRect = activeItem.getBoundingClientRect();
+        const viewportRect = viewport.getBoundingClientRect();
+        const itemIsVisible =
+          itemRect.top >= viewportRect.top &&
+          itemRect.bottom <= viewportRect.bottom;
+
+        if (!itemIsVisible) {
+          viewport.scrollTo({
+            top:
+              viewport.scrollTop +
+              itemRect.top -
+              viewportRect.top -
+              viewport.clientHeight / 2 +
+              itemRect.height / 2,
+            behavior: "auto",
+          });
+        }
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (innerFrame !== null) cancelAnimationFrame(innerFrame);
+    };
+  }, [currentLessonId, modules, pendingLessonId]);
 
   const handleExportPdf = () => {
     if (!course) return;
@@ -471,17 +522,31 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; color: #4b5563; font-size: 9pt; }
         .module { margin-top: 28px; }
         .module > h2 { margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid #99f6e4; color: #115e59; font-size: 18pt; }
-        .lesson { margin-top: 20px; }
-        .lesson > h3 { break-after: avoid; margin-bottom: 8px; font-size: 14pt; }
+        .lesson { margin-top: 24px; }
+        .lesson > h3 { break-after: avoid; margin: 0 0 10px; color: #0f172a; font-size: 14pt; line-height: 1.3; }
         .duration, .empty { color: #6b7280; font-size: 9pt; }
-        p { margin: 8px 0; } ul, ol { padding-left: 24px; }
-        pre { padding: 12px; border-radius: 6px; background: #f3f4f6; white-space: pre-wrap; overflow-wrap: anywhere; }
-        code { font-family: ui-monospace, monospace; }
-        blockquote { margin-left: 0; padding: 8px 14px; border-left: 4px solid #f59e0b; background: #fffbeb; }
-        table { width: 100%; border-collapse: collapse; } th, td { padding: 6px; border: 1px solid #d1d5db; text-align: left; }
+        .content { color: #334155; }
+        .content h1, .content h2, .content h3, .content h4, .content h5 { break-after: avoid; color: #0f172a; line-height: 1.3; }
+        .content h1 { margin: 24px 0 12px; font-size: 20pt; }
+        .content h2 { margin: 24px 0 12px; padding-bottom: 7px; border-bottom: 1px solid #cbd5e1; font-size: 17pt; }
+        .content h3 { margin: 20px 0 9px; font-size: 14pt; }
+        .content h4 { margin: 18px 0 9px; padding-left: 9px; border-left: 3px solid #06b6d4; font-size: 12pt; }
+        .content h5 { margin: 16px 0 7px; font-size: 11pt; }
+        p { margin: 9px 0; }
+        ul, ol { margin: 10px 0; padding-left: 24px; }
+        li { margin: 5px 0; padding-left: 2px; }
+        pre { padding: 14px; border: 1px solid #cbd5e1; border-radius: 7px; color: #e2e8f0; background: #0f172a; white-space: pre-wrap; overflow-wrap: anywhere; }
+        code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+        :not(pre) > code { padding: 1px 5px; border: 1px solid #cbd5e1; border-radius: 4px; color: #155e75; background: #f1f5f9; font-size: .9em; }
+        blockquote { margin: 14px 0; padding: 9px 15px; border-left: 4px solid #f59e0b; border-radius: 0 7px 7px 0; background: #fffbeb; }
+        blockquote p { margin: 3px 0; }
+        table { width: 100%; margin: 14px 0; border-collapse: collapse; }
+        th, td { padding: 7px 9px; border: 1px solid #cbd5e1; text-align: left; }
+        th { color: #0f172a; background: #f1f5f9; }
         img { max-width: 100%; height: auto; }
-        pre, blockquote, table, img { break-inside: avoid; }
+        h1, h2, h3, h4, h5, pre, blockquote, table, img { break-inside: avoid; }
         @media print {
+          * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           body { background: #fff; }
           .toolbar { display: none; }
           .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
@@ -655,8 +720,9 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   );
   const averageRating =
     reviews.length > 0
-      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
-      : course?.rating || 0;
+      ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) /
+        reviews.length
+      : Number(course?.rating || 0);
   const certificateId =
     certificateRecord?.certificate_id ||
     (course && user
@@ -677,34 +743,59 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
 
   useEffect(() => {
     const lessonSections = allLessons
-      .map((lesson) => lessonSectionRefs.current[lesson.id])
-      .filter((section): section is HTMLDivElement => Boolean(section));
+      .map((lesson) => ({
+        lessonId: lesson.id,
+        section: lessonSectionRefs.current[lesson.id],
+      }))
+      .filter(
+        (item): item is { lessonId: string; section: HTMLDivElement } =>
+          Boolean(item.section),
+      );
 
     if (lessonSections.length === 0 || pendingLessonId) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleLesson = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    let frame: number | null = null;
+    const updateActiveLesson = () => {
+      frame = null;
+      const activationLine = 180;
+      let activeLessonId = lessonSections[0].lessonId;
 
-        if (!visibleLesson) return;
-
-        const lessonId = visibleLesson.target.getAttribute("data-lesson-id");
-
-        if (lessonId) {
-          setCurrentLessonId(lessonId);
+      for (const { lessonId, section } of lessonSections) {
+        if (section.getBoundingClientRect().top <= activationLine) {
+          activeLessonId = lessonId;
+        } else {
+          break;
         }
-      },
-      {
-        rootMargin: "-140px 0px -45% 0px",
-        threshold: [0.2, 0.4, 0.6],
-      },
-    );
+      }
 
-    lessonSections.forEach((section) => observer.observe(section));
+      setCurrentLessonId((currentId) =>
+        currentId === activeLessonId ? currentId : activeLessonId,
+      );
+    };
+    const scheduleUpdate = (event?: Event) => {
+      const scrollTarget = event?.target;
+      if (
+        scrollTarget instanceof Node &&
+        courseContentScrollRef.current?.contains(scrollTarget)
+      ) {
+        return;
+      }
 
-    return () => observer.disconnect();
+      if (frame === null) frame = requestAnimationFrame(updateActiveLesson);
+    };
+
+    updateActiveLesson();
+    document.addEventListener("scroll", scheduleUpdate, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      document.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [allLessons, pendingLessonId]);
 
   const completedCount = completedLessons.length;
@@ -872,7 +963,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         user_id: user.id,
         course_id: course.id,
         rating: reviewRating,
-        review: reviewText.trim() || null,
+        review: reviewTextRef.current?.value.trim() || "",
       },
       {
         onConflict: "user_id,course_id",
@@ -896,7 +987,10 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
       nextReviews.length > 0
         ? Number(
             (
-              nextReviews.reduce((sum, review) => sum + review.rating, 0) /
+              nextReviews.reduce(
+                (sum, review) => sum + Number(review.rating || 0),
+                0,
+              ) /
               nextReviews.length
             ).toFixed(1),
           )
@@ -960,37 +1054,40 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
       passScore: number;
     },
   ) => {
+    if (!user) {
+      toast.error("Please sign in to participate in the quiz");
+      return;
+    }
+
     const quiz = normalizeQuizData(lesson.quiz);
     const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
     const passed =
       details?.passed ?? (total > 0 ? percentage >= quiz.passScore : false);
 
-    if (user) {
-      const { error } = await api.from("user_quiz_attempts").insert({
-        user_id: user.id,
-        lesson_id: lesson.id,
-        score,
-        total,
-        passed,
-        pass_score: details?.passScore ?? quiz.passScore,
-        selected_answers: details?.answers || [],
-        question_results: details?.answers || [],
-      });
+    const { error } = await api.from("user_quiz_attempts").insert({
+      user_id: user.id,
+      lesson_id: lesson.id,
+      score,
+      total,
+      passed,
+      pass_score: details?.passScore ?? quiz.passScore,
+      selected_answers: details?.answers || [],
+      question_results: details?.answers || [],
+    });
 
-      if (error) {
-        console.error("Error saving quiz attempt:", error);
-        toast.error("Quiz completed, but the attempt was not saved");
-      } else {
-        setQuizAttemptsByLesson((previousAttempts) => ({
-          ...previousAttempts,
-          [lesson.id]: {
-            score,
-            total,
-            passed,
-            attempted_at: new Date().toISOString(),
-          },
-        }));
-      }
+    if (error) {
+      console.error("Error saving quiz attempt:", error);
+      toast.error("Quiz completed, but the attempt was not saved");
+    } else {
+      setQuizAttemptsByLesson((previousAttempts) => ({
+        ...previousAttempts,
+        [lesson.id]: {
+          score,
+          total,
+          passed,
+          attempted_at: new Date().toISOString(),
+        },
+      }));
     }
 
     toast.success(`Quiz completed! You scored ${score}/${total}`);
@@ -1501,9 +1598,17 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
             </div>
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 items-start gap-4">
-                <div className="p-3 rounded-xl bg-primary/10 hidden sm:block">
-                  <Icon className="h-8 w-8 text-primary" />
-                </div>
+                {course.thumbnail_url ? (
+                  <img
+                    src={course.thumbnail_url}
+                    alt={`${course.title} thumbnail`}
+                    className="hidden h-16 w-24 shrink-0 rounded-xl border border-border/60 bg-white p-1 object-contain dark:bg-slate-950 sm:block"
+                  />
+                ) : (
+                  <div className="p-3 rounded-xl bg-primary/10 hidden sm:block">
+                    <Icon className="h-8 w-8 text-primary" />
+                  </div>
+                )}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <h1 className="font-display text-2xl font-bold break-words">
@@ -1886,12 +1991,143 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
             <div className="flex gap-6">
               <div
                 className={cn(
-                  "flex-1 space-y-6",
+                  "flex flex-1 flex-col gap-6",
                   showSidebar ? "lg:mr-80" : "",
                 )}
               >
+                <section className="glass-card order-1 overflow-hidden border border-border/60">
+                  <div className="bg-primary/[0.04] p-6 sm:p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="hidden rounded-2xl bg-primary/10 p-3 text-primary sm:block">
+                        <BookOpen className="h-6 w-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                          Course overview
+                        </p>
+                        <h2 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+                          {course.title}
+                        </h2>
+                        {course.description && (
+                          <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
+                            {course.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {(course.topics || []).length > 0 && (
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        {(course.topics || []).map((topic) => (
+                          <Badge
+                            key={topic}
+                            variant="secondary"
+                            className="border border-border/60 bg-background/80 px-2.5 py-1"
+                          >
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="glass-card order-3 border border-border/60 p-6 sm:p-8">
+                  <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                        Course rating
+                      </p>
+                      <h2 className="mt-2 font-display text-xl font-semibold">
+                        Rate this course
+                      </h2>
+                      <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                        <span className="font-semibold text-foreground">
+                          {averageRating.toFixed(1)}
+                        </span>
+                        <span>
+                          ({reviews.length} {reviews.length === 1 ? "rating" : "ratings"})
+                        </span>
+                      </div>
+                    </div>
+
+                    {user && (
+                      <div
+                        className="flex items-center gap-1"
+                        onMouseLeave={() => setHoveredReviewRating(0)}
+                        aria-label={`Selected rating: ${reviewRating} out of 5`}
+                      >
+                        {[1, 2, 3, 4, 5].map((rating) => {
+                          const isActive =
+                            rating <= (hoveredReviewRating || reviewRating);
+                          return (
+                            <button
+                              key={rating}
+                              type="button"
+                              onMouseEnter={() => setHoveredReviewRating(rating)}
+                              onFocus={() => setHoveredReviewRating(rating)}
+                              onBlur={() => setHoveredReviewRating(0)}
+                              onClick={() => setReviewRating(rating)}
+                              aria-label={`Rate ${rating} out of 5`}
+                              className="rounded-md p-1 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            >
+                              <Star
+                                className={cn(
+                                  "h-7 w-7 transition-colors",
+                                  isActive
+                                    ? "fill-amber-400 text-amber-400"
+                                    : "text-muted-foreground/40",
+                                )}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {user ? (
+                    <div className="mt-5 space-y-3">
+                      <Textarea
+                        ref={reviewTextRef}
+                        defaultValue={reviewText}
+                        placeholder="Share what you liked or what could be improved (optional)"
+                        rows={3}
+                        maxLength={1000}
+                      />
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs text-muted-foreground">
+                          Your rating: {reviewRating}/5
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={handleSaveReview}
+                          disabled={savingReview}
+                        >
+                          {savingReview && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          {reviews.some((review) => review.user_id === user.id)
+                            ? "Update Rating"
+                            : "Submit Rating"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Sign in to rate this course and share your feedback.
+                      </p>
+                      <Button asChild size="sm">
+                        <Link to="/auth">Sign In to Rate</Link>
+                      </Button>
+                    </div>
+                  )}
+                </section>
+
                 {modules.map((module, moduleIndex) => (
-                  <section key={module.id} className="space-y-6">
+                  <section key={module.id} className="order-2 space-y-6">
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border/60" />
                       <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -2184,17 +2420,35 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                                   )}
                                 </div>
                                 <div className="rounded-xl bg-muted/20 p-4 sm:p-5">
-                                  <Quiz
-                                    questions={quiz}
-                                    onComplete={(score, total, details) => {
-                                      handleQuizComplete(
-                                        lesson,
-                                        score,
-                                        total,
-                                        details,
-                                      );
-                                    }}
-                                  />
+                                  {user ? (
+                                    <Quiz
+                                      questions={quiz}
+                                      onComplete={(score, total, details) => {
+                                        handleQuizComplete(
+                                          lesson,
+                                          score,
+                                          total,
+                                          details,
+                                        );
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="flex flex-col items-center rounded-xl border border-border/60 bg-background/80 px-6 py-10 text-center">
+                                      <div className="mb-4 rounded-full bg-primary/10 p-3">
+                                        <LockKeyhole className="h-6 w-6 text-primary" />
+                                      </div>
+                                      <h5 className="font-display text-lg font-semibold">
+                                        Sign in to take this quiz
+                                      </h5>
+                                      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                                        Log in to answer the questions, save your score,
+                                        and track your course progress.
+                                      </p>
+                                      <Button asChild className="mt-5">
+                                        <Link to="/auth">Sign In to Participate</Link>
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </section>
                             );
@@ -2234,8 +2488,8 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
               </div>
 
               {showSidebar && (
-                <div className="hidden lg:block fixed right-4 top-[140px] bottom-4 w-80">
-                  <div className="glass-card h-full flex flex-col">
+                <div className="fixed bottom-4 right-4 top-[140px] hidden w-80 max-w-[calc(100vw-2rem)] lg:block">
+                  <div className="glass-card flex h-full min-w-0 flex-col overflow-hidden">
                     <div className="p-4 border-b border-border/50">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="font-semibold">Course Content</h3>
@@ -2266,12 +2520,15 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                         />
                       </div>
                     </div>
-                    <ScrollArea className="min-h-0 flex-1">
+                    <ScrollArea
+                      ref={courseContentScrollRef}
+                      className="min-h-0 min-w-0 flex-1 pr-1"
+                    >
                       <Accordion
                         type="multiple"
                         value={openModuleIds}
                         onValueChange={setOpenModuleIds}
-                        className="p-2"
+                        className="w-[calc(20rem-0.25rem)] min-w-0 max-w-full overflow-hidden p-2"
                       >
                         {filteredModules.length === 0 && (
                           <div className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -2283,7 +2540,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                             key={module.id}
                             value={module.id}
                             className={cn(
-                              "border-none rounded-lg",
+                              "min-w-0 overflow-hidden border-none rounded-lg",
                               dragOverTarget === `module-${module.id}` &&
                                 "bg-primary/5 ring-1 ring-primary/30",
                             )}
@@ -2318,13 +2575,13 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                               handleLessonDrop(module.id);
                             }}
                           >
-                            <AccordionTrigger className="px-3 py-2 hover:bg-secondary/50 rounded-lg text-sm font-medium">
-                              <span className="flex min-w-0 items-center gap-2">
+                            <AccordionTrigger className="min-w-0 overflow-hidden rounded-lg px-3 py-2 text-sm font-medium hover:bg-secondary/50 [&>svg]:shrink-0">
+                              <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                                 {canReorderContent && (
                                   <span
                                     draggable
                                     aria-label={`Drag ${module.title}`}
-                                    className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-secondary active:cursor-grabbing"
+                                    className="shrink-0 cursor-grab rounded p-0.5 text-muted-foreground hover:bg-secondary active:cursor-grabbing"
                                     onClick={(event) => {
                                       event.preventDefault();
                                       event.stopPropagation();
@@ -2345,7 +2602,12 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                                     <GripVertical className="h-4 w-4" />
                                   </span>
                                 )}
-                                <span className="truncate">{module.title}</span>
+                                <span
+                                  className="block min-w-0 max-w-[10rem] flex-1 truncate"
+                                  title={module.title}
+                                >
+                                  {module.title}
+                                </span>
                                 {isAdmin && (
                                   <span
                                     role="button"
@@ -2356,7 +2618,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                                         : "Publish"
                                     } ${module.title}`}
                                     className={cn(
-                                      "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
                                       module.is_published
                                         ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                                         : "bg-amber-500/10 text-amber-700 dark:text-amber-200",
@@ -2509,7 +2771,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                                         setDragOverTarget(null);
                                       }}
                                       className={cn(
-                                        "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors",
+                                        "flex w-full min-w-0 items-start gap-3 overflow-hidden rounded-lg p-3 text-left transition-colors",
                                         currentLessonId === lesson.id
                                           ? "bg-primary/10 text-primary"
                                           : "hover:bg-secondary/50",
@@ -2528,10 +2790,11 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                                       ) : (
                                         <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                                       )}
-                                      <div className="flex-1 min-w-0">
+                                      <div className="min-w-0 max-w-[13rem] flex-1">
                                         <p
+                                          title={lesson.title}
                                           className={cn(
-                                            "text-sm truncate",
+                                            "block max-w-full truncate text-sm",
                                             isCompleted &&
                                               "text-muted-foreground",
                                           )}

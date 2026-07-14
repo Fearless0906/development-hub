@@ -1,8 +1,27 @@
 import axios, { AxiosError } from "axios";
 
-export const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
-).replace(/\/$/, "");
+const getApiUrl = () => {
+  const configuredUrl =
+    import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  const apiUrl = new URL(configuredUrl, window.location.origin);
+  const apiUsesLocalhost = ["localhost", "127.0.0.1", "::1"].includes(
+    apiUrl.hostname,
+  );
+  const siteUsesNetworkHost = !["localhost", "127.0.0.1", "::1"].includes(
+    window.location.hostname,
+  );
+
+  // When Vite is opened from another device, localhost would refer to that
+  // device. Use the hostname serving the frontend so it reaches Django on the
+  // development machine instead.
+  if (apiUsesLocalhost && siteUsesNetworkHost) {
+    apiUrl.hostname = window.location.hostname;
+  }
+
+  return apiUrl.toString().replace(/\/$/, "");
+};
+
+export const API_URL = getApiUrl();
 const TOKEN_KEY = "cds_django_token";
 const REFRESH_TOKEN_KEY = "cds_django_refresh_token";
 export const AUTH_EXPIRED_EVENT = "django-auth-expired";

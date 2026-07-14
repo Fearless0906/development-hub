@@ -23,6 +23,7 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
     instructorName: "",
     instructorTitle: "",
     topics: "",
+    thumbnailUrl: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,6 +50,7 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
       instructor_name: formData.instructorName || null,
       instructor_title: formData.instructorTitle || null,
       topics: formData.topics ? formData.topics.split(",").map((t) => t.trim()) : [],
+      thumbnail_url: formData.thumbnailUrl.trim(),
       is_published: true,
     });
 
@@ -72,6 +74,7 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
       instructorName: "",
       instructorTitle: "",
       topics: "",
+      thumbnailUrl: "",
     });
     setOpen(false);
     onCourseCreated();
@@ -144,6 +147,25 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
                 placeholder="e.g., Senior Developer"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="thumbnailUrl">Thumbnail URL (optional)</Label>
+            <Input
+              id="thumbnailUrl"
+              type="url"
+              value={formData.thumbnailUrl}
+              onChange={(e) =>
+                setFormData({ ...formData, thumbnailUrl: e.target.value })
+              }
+              placeholder="https://example.com/course-thumbnail.jpg"
+            />
+            {formData.thumbnailUrl && (
+              <img
+                src={formData.thumbnailUrl}
+                alt="Course thumbnail preview"
+                className="h-32 w-full rounded-lg border border-border bg-white p-2 object-contain dark:bg-slate-950"
+              />
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="topics">Topics (comma-separated)</Label>

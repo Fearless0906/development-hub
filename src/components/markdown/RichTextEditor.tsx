@@ -318,10 +318,6 @@ interface LessonContentProps {
   content?: string | null;
 }
 
-interface LessonContentProps {
-  content?: string | null;
-}
-
 const getTextContent = (node: any): string => {
   if (!node) return "";
 
@@ -338,28 +334,30 @@ export function LessonContent({ content }: LessonContentProps) {
   return (
     <div
       className={cn(
-        "max-w-none text-slate-900 dark:text-slate-100",
+        "mx-auto max-w-4xl text-[15px] text-slate-800 dark:text-slate-200 sm:text-base",
 
-        "[&_p]:my-2 [&_p]:leading-7",
-        "[&_strong]:font-bold",
+        "[&_p]:my-3 [&_p]:leading-7",
+        "[&_strong]:font-semibold [&_strong]:text-slate-950 dark:[&_strong]:text-white",
         "[&_em]:italic",
 
-        "[&_h1]:mt-5 [&_h1]:mb-2 [&_h1]:text-3xl [&_h1]:font-bold",
-        "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-2xl [&_h2]:font-bold",
-        "[&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-xl [&_h3]:font-bold",
+        "[&_h1]:mb-5 [&_h1]:mt-8 [&_h1]:font-display [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-slate-950 dark:[&_h1]:text-white",
+        "[&_h2]:mb-4 [&_h2]:mt-10 [&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-3 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-slate-950 dark:[&_h2]:border-white/10 dark:[&_h2]:text-white",
+        "[&_h3]:mb-3 [&_h3]:mt-8 [&_h3]:font-display [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-slate-950 dark:[&_h3]:text-white",
+        "[&_h4]:mb-3 [&_h4]:mt-7 [&_h4]:border-l-4 [&_h4]:border-cyan-500 [&_h4]:pl-3 [&_h4]:font-display [&_h4]:text-lg [&_h4]:font-semibold [&_h4]:text-slate-950 dark:[&_h4]:border-cyan-400 dark:[&_h4]:text-white",
+        "[&_h5]:mb-2 [&_h5]:mt-6 [&_h5]:text-base [&_h5]:font-semibold [&_h5]:text-slate-950 dark:[&_h5]:text-white",
 
-        "[&_ul]:my-2 [&_ul]:pl-6 [&_ul]:list-disc",
-        "[&_ol]:my-2 [&_ol]:pl-6 [&_ol]:list-decimal",
-        "[&_li]:my-1",
+        "[&_ul]:my-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6",
+        "[&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6",
+        "[&_li]:pl-1 [&_li]:leading-7 [&_li]:marker:text-cyan-600 dark:[&_li]:marker:text-cyan-400",
 
         "[&_a]:text-cyan-600 [&_a]:underline [&_a]:underline-offset-4 dark:[&_a]:text-cyan-300",
 
-        "[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 dark:[&_:not(pre)>code]:bg-white/10",
+        "[&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:border [&_:not(pre)>code]:border-slate-200 [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.9em] [&_:not(pre)>code]:text-cyan-800 dark:[&_:not(pre)>code]:border-white/10 dark:[&_:not(pre)>code]:bg-white/10 dark:[&_:not(pre)>code]:text-cyan-200",
 
         "[&_pre]:my-3 [&_pre]:rounded-xl [&_pre]:bg-slate-950 [&_pre]:p-4 [&_pre]:text-slate-100",
         "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:font-mono",
 
-        "[&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-500 [&_blockquote]:bg-amber-50 [&_blockquote]:px-4 [&_blockquote]:py-3 dark:[&_blockquote]:bg-amber-500/10",
+        "[&_blockquote]:my-6 [&_blockquote]:rounded-r-xl [&_blockquote]:border-l-4 [&_blockquote]:border-amber-500 [&_blockquote]:bg-amber-50 [&_blockquote]:px-5 [&_blockquote]:py-3 dark:[&_blockquote]:bg-amber-500/10",
         "[&_blockquote_p]:my-1",
       )}
     >

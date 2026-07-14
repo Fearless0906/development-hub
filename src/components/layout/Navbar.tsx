@@ -69,7 +69,11 @@ export const Navbar = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-9 w-9 rounded-full">
           <Avatar className="h-9 w-9 border border-border">
-            <AvatarImage src={user.user_metadata?.avatar_url} alt="Avatar" />
+            <AvatarImage
+              src={user.user_metadata?.avatar_url}
+              alt="Avatar"
+              referrerPolicy="no-referrer"
+            />
             <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
               {initials}
             </AvatarFallback>

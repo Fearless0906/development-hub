@@ -34,6 +34,7 @@ export interface Course {
   level: "Beginner" | "Intermediate" | "Advanced";
   duration: string | null;
   icon: string | null;
+  thumbnail_url: string | null;
   students_count: number;
   rating: number | null;
   instructor_name: string | null;

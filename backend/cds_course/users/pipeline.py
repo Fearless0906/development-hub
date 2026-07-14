@@ -7,7 +7,12 @@ def update_oauth_profile(backend, user, response, *args, **kwargs):
     changed_fields = []
 
     if provider == "google-oauth2":
-        avatar_url = response.get("picture")
+        google_profile = response.get("user") or response.get("profile") or {}
+        avatar_url = (
+            response.get("picture")
+            or google_profile.get("picture")
+            or kwargs.get("details", {}).get("picture")
+        )
     elif provider == "github":
         avatar_url = response.get("avatar_url")
         github_username = response.get("login")

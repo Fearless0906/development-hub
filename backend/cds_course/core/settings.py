@@ -29,7 +29,7 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -167,6 +167,16 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+
+# Allow Vite development servers opened through a private-network address.
+# Production origins should still be listed explicitly above or supplied from
+# environment-specific settings.
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}:(8080|5173)$",
+        r"^http://192\.168\.\d{1,3}\.\d{1,3}:(8080|5173)$",
+        r"^http://172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}:(8080|5173)$",
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -31,6 +31,20 @@ interface Profile {
   created_at: string;
 }
 
+interface ApiProfile {
+  id: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  github_username?: string | null;
+  avatar_url?: string | null;
+  reputation?: number | null;
+  questions_count?: number | null;
+  answers_count?: number | null;
+  bio?: string | null;
+  date_joined?: string | null;
+}
+
 interface Badge {
   name: string;
   icon: React.ReactNode;
@@ -168,7 +182,34 @@ const Leaderboard = () => {
         .limit(100);
 
       if (error) throw error;
-      setProfiles(data || []);
+      const normalizedProfiles = ((data || []) as ApiProfile[]).map(
+        (profile) => {
+          const fullName = [profile.first_name, profile.last_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          const emailName = profile.email?.split("@")[0]?.trim();
+          const fallbackName =
+            fullName ||
+            profile.github_username?.trim() ||
+            emailName ||
+            "Community member";
+
+          return {
+            id: profile.id,
+            username: emailName || fallbackName,
+            display_name: fullName || fallbackName,
+            avatar_url: profile.avatar_url || null,
+            reputation: Number(profile.reputation || 0),
+            questions_count: Number(profile.questions_count || 0),
+            answers_count: Number(profile.answers_count || 0),
+            bio: profile.bio || null,
+            created_at: profile.date_joined || new Date().toISOString(),
+          };
+        },
+      );
+
+      setProfiles(normalizedProfiles);
     } catch (error) {
       console.error("Error fetching profiles:", error);
     } finally {
@@ -176,11 +217,16 @@ const Leaderboard = () => {
     }
   };
 
-  const getInitials = (username: string) => {
-    return username.substring(0, 2).toUpperCase();
+  const getInitials = (name?: string | null) => {
+    const words = (name || "User").trim().split(/\s+/).filter(Boolean);
+    if (words.length > 1) {
+      return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+    }
+    return (words[0] || "User").substring(0, 2).toUpperCase();
   };
 
-  const formatNumber = (num: number) => {
+  const formatNumber = (value?: number | null) => {
+    const num = Number(value || 0);
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toString();
@@ -250,7 +296,11 @@ const Leaderboard = () => {
                       <Medal className="h-10 w-10 text-gray-300" />
                     </div>
                     <Avatar className="h-16 w-16 mx-auto mb-3 border-2 border-gray-300/50">
-                      <AvatarImage src={profiles[1].avatar_url || undefined} />
+                      <AvatarImage
+                        src={profiles[1].avatar_url || undefined}
+                        alt={profiles[1].display_name || profiles[1].username}
+                        referrerPolicy="no-referrer"
+                      />
                       <AvatarFallback className="bg-gray-300/10 text-gray-300 text-lg font-bold">
                         {getInitials(profiles[1].username)}
                       </AvatarFallback>
@@ -273,7 +323,11 @@ const Leaderboard = () => {
                       <Crown className="h-12 w-12 text-yellow-400" />
                     </div>
                     <Avatar className="h-20 w-20 mx-auto mb-3 border-2 border-yellow-400/50">
-                      <AvatarImage src={profiles[0].avatar_url || undefined} />
+                      <AvatarImage
+                        src={profiles[0].avatar_url || undefined}
+                        alt={profiles[0].display_name || profiles[0].username}
+                        referrerPolicy="no-referrer"
+                      />
                       <AvatarFallback className="bg-yellow-400/10 text-yellow-400 text-xl font-bold">
                         {getInitials(profiles[0].username)}
                       </AvatarFallback>
@@ -308,7 +362,11 @@ const Leaderboard = () => {
                       <Medal className="h-9 w-9 text-amber-600" />
                     </div>
                     <Avatar className="h-14 w-14 mx-auto mb-3 border-2 border-amber-600/50">
-                      <AvatarImage src={profiles[2].avatar_url || undefined} />
+                      <AvatarImage
+                        src={profiles[2].avatar_url || undefined}
+                        alt={profiles[2].display_name || profiles[2].username}
+                        referrerPolicy="no-referrer"
+                      />
                       <AvatarFallback className="bg-amber-600/10 text-amber-600 text-base font-bold">
                         {getInitials(profiles[2].username)}
                       </AvatarFallback>
@@ -344,7 +402,11 @@ const Leaderboard = () => {
 
                     {/* Avatar */}
                     <Avatar className="h-12 w-12 border border-border">
-                      <AvatarImage src={profile.avatar_url || undefined} />
+                      <AvatarImage
+                        src={profile.avatar_url || undefined}
+                        alt={profile.display_name || profile.username}
+                        referrerPolicy="no-referrer"
+                      />
                       <AvatarFallback className="bg-primary/10 text-primary font-medium">
                         {getInitials(profile.username)}
                       </AvatarFallback>

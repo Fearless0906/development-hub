@@ -18,6 +18,7 @@ class Course(models.Model):
     level = models.CharField(max_length=20, choices=Level.choices, default=Level.BEGINNER)
     duration = models.CharField(max_length=100, blank=True, null=True)
     icon = models.CharField(max_length=100, default="Code")
+    thumbnail_url = models.URLField(blank=True)
     students_count = models.PositiveIntegerField(default=0)
     rating = models.DecimalField(max_digits=2, decimal_places=1, default=0)
     instructor_name = models.CharField(max_length=255, blank=True)
