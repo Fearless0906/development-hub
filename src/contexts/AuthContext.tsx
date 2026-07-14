@@ -18,6 +18,7 @@ import {
   API_URL,
   AUTH_EXPIRED_EVENT,
   getOAuthRedirectUrl,
+  isPrivateNetworkHostname,
 } from "@/integrations/django/api";
 
 import { toast } from "sonner";
@@ -141,6 +142,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     provider: OAuthProvider,
     options: { redirectTo: string },
   ) => {
+    const redirectUrl = new URL(options.redirectTo);
+    if (
+      provider === "google" &&
+      redirectUrl.protocol === "http:" &&
+      isPrivateNetworkHostname(redirectUrl.hostname)
+    ) {
+      toast.error(
+        "Google sign-in requires HTTPS when the app is opened through a LAN IP. Use email/password, localhost, or an HTTPS development URL.",
+        { duration: 8000 },
+      );
+      return;
+    }
+
     const { error } = await api.auth.signInWithOAuth({
       provider,
       options,

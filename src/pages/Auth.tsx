@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,10 @@ const usernameSchema = z
   );
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [searchParams] = useSearchParams();
+  const [isLogin, setIsLogin] = useState(
+    () => searchParams.get("mode") !== "signup",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -50,6 +53,10 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    setIsLogin(searchParams.get("mode") !== "signup");
+  }, [searchParams]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string; username?: string } =

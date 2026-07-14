@@ -36,3 +36,19 @@ class Course(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class DemoRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    company = models.CharField(max_length=255, blank=True)
+    preferred_at = models.DateField()
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} - {self.preferred_at:%Y-%m-%d}"

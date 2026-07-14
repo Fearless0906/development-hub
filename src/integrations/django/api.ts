@@ -45,9 +45,30 @@ type ApiResult<T = unknown> = {
 type Filter = { type: "eq" | "in" | "ilike"; field: string; value: unknown };
 export type OAuthProvider = "google" | "github";
 
+export const isPrivateNetworkHostname = (hostname: string) =>
+  /^10\./.test(hostname) ||
+  /^192\.168\./.test(hostname) ||
+  /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+
 export const getOAuthRedirectUrl = (provider: OAuthProvider) => {
   const configuredOrigin = import.meta.env.VITE_OAUTH_REDIRECT_ORIGIN?.trim();
-  const origin = (configuredOrigin || window.location.origin).replace(/\/$/, "");
+  let origin = (configuredOrigin || window.location.origin).replace(/\/$/, "");
+
+  if (configuredOrigin) {
+    const configuredHost = new URL(configuredOrigin).hostname;
+    const configuredIsLocal = ["localhost", "127.0.0.1", "::1"].includes(
+      configuredHost,
+    );
+    const browserIsNetworkHost = !["localhost", "127.0.0.1", "::1"].includes(
+      window.location.hostname,
+    );
+
+    // A remote device cannot return to localhost on the development machine.
+    if (configuredIsLocal && browserIsNetworkHost) {
+      origin = window.location.origin;
+    }
+  }
+
   return `${origin}/auth/callback/${provider}`;
 };
 
@@ -64,6 +85,7 @@ export const API_ENDPOINTS = {
   bookmarks: "bookmarks",
   notifications: "notifications",
   courses: "courses",
+  demo_requests: "courses/demo-requests",
   course_modules: "course-modules",
   lessons: "lessons",
   user_course_progress: "course-progress",
@@ -93,6 +115,7 @@ const endpoints: Record<string, string> = {
   bookmarks: API_ENDPOINTS.bookmarks,
   notifications: API_ENDPOINTS.notifications,
   courses: API_ENDPOINTS.courses,
+  demo_requests: API_ENDPOINTS.demo_requests,
   course_modules: API_ENDPOINTS.course_modules,
   lessons: API_ENDPOINTS.lessons,
   user_course_progress: API_ENDPOINTS.user_course_progress,

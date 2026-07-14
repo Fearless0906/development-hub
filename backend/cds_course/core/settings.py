@@ -160,13 +160,23 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Local Vite development servers allowed to call the Django API.
-CORS_ALLOWED_ORIGINS = [
+DEFAULT_FRONTEND_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+CONFIGURED_FRONTEND_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in env('FRONTEND_ORIGINS', default='').split(',')
+    if origin.strip()
+]
+FRONTEND_ORIGINS = list(dict.fromkeys(
+    DEFAULT_FRONTEND_ORIGINS + CONFIGURED_FRONTEND_ORIGINS
+))
+
+# Frontend origins allowed to call the Django API.
+CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
 
 # Allow Vite development servers opened through a private-network address.
 # Production origins should still be listed explicitly above or supplied from
@@ -265,14 +275,9 @@ DJOSER = {
     'SOCIAL_AUTH_TOKEN_STRATEGY':
         'djoser.social.token.jwt.TokenStrategy',
     'SOCIAL_AUTH_ALLOWED_REDIRECT_URIS': [
-        'http://localhost:8080/auth/callback/google',
-        'http://localhost:8080/auth/callback/github',
-        'http://127.0.0.1:8080/auth/callback/google',
-        'http://127.0.0.1:8080/auth/callback/github',
-        'http://localhost:5173/auth/callback/google',
-        'http://localhost:5173/auth/callback/github',
-        'http://127.0.0.1:5173/auth/callback/google',
-        'http://127.0.0.1:5173/auth/callback/github',
+        f'{origin}/auth/callback/{provider}'
+        for origin in FRONTEND_ORIGINS
+        for provider in ('google', 'github')
     ],
     'SERIALIZERS': {
         'user_create': 'users.serializers.CreateUserSerializer',
