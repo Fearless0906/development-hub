@@ -1,9 +1,8 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import "highlight.js/styles/atom-one-dark.css";
+import { detectCodeLanguage } from "@/lib/detectCodeLanguage";
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   children: React.ReactNode;
@@ -131,7 +130,6 @@ export const MarkdownRenderer = ({
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
         components={{
           // Override pre to add better styling
           pre: ({ children, ...props }) => {
@@ -142,7 +140,11 @@ export const MarkdownRenderer = ({
                 : null;
             const className = childProps?.className || "";
             const match = /language-(\w+)/.exec(className);
-            const language = match?.[1];
+            const code = String(childProps?.children ?? children).replace(
+              /\n$/,
+              "",
+            );
+            const language = match?.[1] || detectCodeLanguage(code);
 
             return (
               <CodeBlock language={language} {...props}>

@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/integrations/django/api";
+import { createUuid } from "@/lib/createUuid";
 import {
   normalizeQuizData,
   QuizData,
@@ -44,6 +45,7 @@ import {
 import { Course, CourseModule, Lesson } from "@/types/learning";
 import { toast } from "sonner";
 import { Navbar } from "@/components/layout/Navbar";
+import { RichTextEditor } from "@/components/markdown/RichTextEditor";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -62,7 +64,7 @@ type QuizAttempt = {
 };
 
 const blankQuestion = (): QuizQuestion => ({
-  id: crypto.randomUUID(),
+  id: createUuid(),
   question: "",
   type: "single",
   options: ["", "", "", ""],
@@ -73,6 +75,7 @@ const blankQuestion = (): QuizQuestion => ({
 const Quiz = () => {
   const [lessons, setLessons] = useState<FlatLesson[]>([]);
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
+  const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedLessonId, setSelectedLessonId] = useState("");
   const [quiz, setQuiz] = useState<QuizData>({
     questions: [blankQuestion()],
@@ -92,6 +95,26 @@ const Quiz = () => {
 
   const selectedLesson = lessons.find(
     (lesson) => lesson.id === selectedLessonId,
+  );
+  const moduleOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          lessons.map((lesson) => [
+            lesson.module_id,
+            {
+              id: lesson.module_id,
+              courseTitle: lesson.courseTitle,
+              moduleTitle: lesson.moduleTitle,
+            },
+          ]),
+        ).values(),
+      ),
+    [lessons],
+  );
+  const lessonsInSelectedModule = useMemo(
+    () => lessons.filter((lesson) => lesson.module_id === selectedModuleId),
+    [lessons, selectedModuleId],
   );
   const selectedAttempts = attempts.filter(
     (attempt) => attempt.lesson_id === selectedLessonId,
@@ -170,8 +193,12 @@ const Quiz = () => {
       setLessons(flatLessons);
       setAttempts((attemptsData || []) as QuizAttempt[]);
 
-      const firstLesson = flatLessons[0];
+      const firstLesson =
+        flatLessons.find(
+          (lesson) => normalizeQuizData(lesson.quiz).questions.length > 0,
+        ) || flatLessons[0];
       if (firstLesson) {
+        setSelectedModuleId(firstLesson.module_id);
         setSelectedLessonId(firstLesson.id);
         setQuiz(normalizeQuizData(firstLesson.quiz));
       }
@@ -195,6 +222,27 @@ const Quiz = () => {
             reviewAnswers: true,
           },
     );
+  };
+
+  const handleModuleChange = (moduleId: string) => {
+    setSelectedModuleId(moduleId);
+
+    const firstLessonInModule = lessons.find(
+      (lesson) => lesson.module_id === moduleId,
+    );
+
+    if (!firstLessonInModule) {
+      setSelectedLessonId("");
+      setQuiz({
+        questions: [blankQuestion()],
+        passScore: 70,
+        unlimitedAttempts: true,
+        reviewAnswers: true,
+      });
+      return;
+    }
+
+    handleLessonChange(firstLessonInModule.id);
   };
 
   const updateQuestion = (index: number, nextQuestion: QuizQuestion) => {
@@ -516,7 +564,7 @@ const Quiz = () => {
         const questionMarker = line.match(/^QUESTION\s+\d+\s+\[(single|multiple)]$/i);
         if (questionMarker) {
           if (current) importedQuestions.push(current);
-          current = { id: crypto.randomUUID(), question: "", type: questionMarker[1].toLowerCase() as "single" | "multiple", options: [], correctAnswers: [], explanation: "" };
+          current = { id: createUuid(), question: "", type: questionMarker[1].toLowerCase() as "single" | "multiple", options: [], correctAnswers: [], explanation: "" };
           reading = "question";
           optionIndex = -1;
           continue;
@@ -604,7 +652,9 @@ const Quiz = () => {
 
     setLessons((currentLessons) =>
       currentLessons.map((lesson) =>
-        lesson.id === selectedLesson.id ? { ...lesson, quiz } : lesson,
+        lesson.id === selectedLesson.id
+          ? { ...lesson, quiz, completion_rule: "quiz" }
+          : lesson,
       ),
     );
     toast.success("Quiz saved");
@@ -703,20 +753,38 @@ const Quiz = () => {
             </header>
 
             <div className="space-y-8 p-5 sm:p-7">
-              <div className="grid gap-4 lg:grid-cols-[1.6fr_0.55fr]">
+              <div className="grid gap-4 lg:grid-cols-[1fr_1fr_0.55fr]">
+                <div className="space-y-2">
+                  <Label>Module</Label>
+                  <Select
+                    value={selectedModuleId}
+                    onValueChange={handleModuleChange}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select module" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {moduleOptions.map((module) => (
+                        <SelectItem key={module.id} value={module.id}>
+                          {module.courseTitle} / {module.moduleTitle}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label>Lesson</Label>
                   <Select
                     value={selectedLessonId}
                     onValueChange={handleLessonChange}
+                    disabled={!selectedModuleId}
                   >
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select lesson" />
                     </SelectTrigger>
                     <SelectContent>
-                      {lessons.map((lesson) => (
+                      {lessonsInSelectedModule.map((lesson) => (
                         <SelectItem key={lesson.id} value={lesson.id}>
-                          {lesson.courseTitle} / {lesson.moduleTitle} /{" "}
                           {lesson.title}
                         </SelectItem>
                       ))}
@@ -939,16 +1007,16 @@ const Quiz = () => {
 
                     <div className="mt-5 space-y-2">
                       <Label>Explanation</Label>
-                      <Textarea
+                      <RichTextEditor
                         value={question.explanation}
-                        onChange={(event) =>
+                        onChange={(value) =>
                           updateQuestion(questionIndex, {
                             ...question,
-                            explanation: event.target.value,
+                            explanation: value,
                           })
                         }
-                        rows={2}
                         placeholder="Optional feedback shown after the learner answers"
+                        minHeight="180px"
                       />
                     </div>
                     </article>
@@ -1059,16 +1127,16 @@ const Quiz = () => {
 
                   <div className="space-y-2">
                     <Label>Explanation</Label>
-                    <Textarea
+                    <RichTextEditor
                       value={questionDraft.explanation}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setQuestionDraft((draft) => ({
                           ...draft,
-                          explanation: event.target.value,
+                          explanation: value,
                         }))
                       }
-                      rows={2}
                       placeholder="Optional feedback shown after the learner answers"
+                      minHeight="180px"
                     />
                   </div>
 

@@ -6,11 +6,13 @@ import { CodeEditor } from "./CodeEditor";
 import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { detectCodeLanguage } from "@/lib/detectCodeLanguage";
 
 export interface CodingChallengeData {
   id: string;
   title: string;
   description: string;
+  language?: string;
   starterCode: string;
   solution: string;
   testCases: {
@@ -29,6 +31,8 @@ interface CodingChallengeProps {
 
 export const CodingChallenge = ({ challenge, lessonId, onComplete }: CodingChallengeProps) => {
   const { user } = useAuth();
+  const challengeLanguage =
+    challenge.language || detectCodeLanguage(challenge.starterCode) || "javascript";
   const [code, setCode] = useState(challenge.starterCode);
   const [output, setOutput] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<{ passed: boolean; message: string }[]>([]);
@@ -178,6 +182,15 @@ export const CodingChallenge = ({ challenge, lessonId, onComplete }: CodingChall
   };
 
   const runCode = async () => {
+    if (challengeLanguage !== "javascript") {
+      setOutput(
+        `Code execution for ${challengeLanguage.toUpperCase()} is not supported yet. Use JavaScript challenges for runnable tests.`,
+      );
+      setTestResults([]);
+      setAllPassed(false);
+      return;
+    }
+
     setIsRunning(true);
     setOutput(null);
     setTestResults([]);
@@ -256,13 +269,13 @@ export const CodingChallenge = ({ challenge, lessonId, onComplete }: CodingChall
               <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
               <span className="w-3 h-3 rounded-full bg-green-500/80" />
             </span>
-            <span className="ml-2">solution.js</span>
+            <span className="ml-2">{`solution.${challengeLanguage}`}</span>
           </div>
           <div className="bg-slate-950">
             <CodeEditor
               value={code}
               onChange={setCode}
-              language="javascript"
+              language={challengeLanguage}
             />
           </div>
         </div>

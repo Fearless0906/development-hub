@@ -38,6 +38,8 @@ import {
   Quote,
 } from "lucide-react";
 import { api } from "@/integrations/django/api";
+import { createUuid } from "@/lib/createUuid";
+import { detectCodeLanguage } from "@/lib/detectCodeLanguage";
 import { toast } from "sonner";
 import { CourseModule } from "@/types/learning";
 import { CodingChallengeData } from "./CodingChallenge";
@@ -47,6 +49,18 @@ interface TestCase {
   expectedOutput: string;
   description: string;
 }
+
+const CHALLENGE_LANGUAGES = [
+  "javascript",
+  "typescript",
+  "tsx",
+  "jsx",
+  "python",
+  "html",
+  "css",
+  "json",
+  "bash",
+] as const;
 
 interface CreateLessonDialogProps {
   modules: CourseModule[];
@@ -71,7 +85,7 @@ export const CreateLessonDialog = ({
     moduleId: "",
     title: "",
     content: "",
-    codeLanguage: "tsx",
+    codeLanguage: "python",
     codeSnippet: "",
     imageName: "",
     noteType: "note",
@@ -83,6 +97,7 @@ export const CreateLessonDialog = ({
   const [challengeData, setChallengeData] = useState({
     title: "",
     description: "",
+    language: "javascript",
     starterCode: "// Write your code here\n",
     solution: "",
   });
@@ -174,7 +189,7 @@ export const CreateLessonDialog = ({
       moduleId: "",
       title: "",
       content: "",
-      codeLanguage: "tsx",
+      codeLanguage: "python",
       codeSnippet: "",
       imageName: "",
       noteType: "note",
@@ -184,6 +199,7 @@ export const CreateLessonDialog = ({
     setChallengeData({
       title: "",
       description: "",
+      language: "javascript",
       starterCode: "// Write your code here\n",
       solution: "",
     });
@@ -227,15 +243,21 @@ export const CreateLessonDialog = ({
     const selectedModule = availableModules.find(
       (m) => m.id === formData.moduleId,
     );
-    const orderIndex = selectedModule ? selectedModule.lessons.length : 0;
+    const orderIndex = selectedModule
+      ? selectedModule.lessons.reduce(
+          (maxOrder, lesson) => Math.max(maxOrder, lesson.order_index),
+          -1,
+        ) + 1
+      : 0;
 
     // Build challenge object if enabled
     let challenge: CodingChallengeData | null = null;
     if (enableChallenge) {
       challenge = {
-        id: crypto.randomUUID(),
+        id: createUuid(),
         title: challengeData.title,
         description: challengeData.description,
+        language: challengeData.language,
         starterCode: challengeData.starterCode,
         solution: challengeData.solution,
         testCases: testCases.filter(
@@ -456,8 +478,10 @@ export const CreateLessonDialog = ({
       return;
     }
 
+    const detectedLanguage = detectCodeLanguage(formData.codeSnippet);
+
     appendToContent(
-      `\`\`\`${formData.codeLanguage}\n${formData.codeSnippet}\n\`\`\``,
+      `\`\`\`${detectedLanguage === "text" ? formData.codeLanguage : detectedLanguage}\n${formData.codeSnippet}\n\`\`\``,
     );
     toast.success("Code block added to lesson content");
     focusContentAtEnd();
@@ -766,6 +790,33 @@ export const CreateLessonDialog = ({
                             placeholder="Describe what the student needs to do"
                           />
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Challenge Language *</Label>
+                        <Select
+                          value={challengeData.language}
+                          onValueChange={(value) =>
+                            setChallengeData({
+                              ...challengeData,
+                              language: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CHALLENGE_LANGUAGES.map((language) => (
+                              <SelectItem key={language} value={language}>
+                                {language.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Only JavaScript challenges can run tests in-browser for now.
+                        </p>
                       </div>
 
                       <div className="space-y-2">

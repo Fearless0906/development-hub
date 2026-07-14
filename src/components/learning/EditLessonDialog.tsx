@@ -48,6 +48,8 @@ import {
   Quote,
 } from "lucide-react";
 import { api } from "@/integrations/django/api";
+import { createUuid } from "@/lib/createUuid";
+import { detectCodeLanguage } from "@/lib/detectCodeLanguage";
 import { toast } from "sonner";
 import { CourseModule, Lesson } from "@/types/learning";
 import { CodingChallengeData } from "./CodingChallenge";
@@ -57,6 +59,18 @@ interface TestCase {
   expectedOutput: string;
   description: string;
 }
+
+const CHALLENGE_LANGUAGES = [
+  "javascript",
+  "typescript",
+  "tsx",
+  "jsx",
+  "python",
+  "html",
+  "css",
+  "json",
+  "bash",
+] as const;
 
 interface EditLessonDialogProps {
   lesson: Lesson;
@@ -78,7 +92,7 @@ export const EditLessonDialog = ({
     moduleId: lesson.module_id,
     title: lesson.title,
     content: lesson.content || "",
-    codeLanguage: "tsx",
+    codeLanguage: "python",
     codeSnippet: "",
     noteType: "note",
     linkUrl: "",
@@ -90,6 +104,7 @@ export const EditLessonDialog = ({
   const [challengeData, setChallengeData] = useState({
     title: lesson.challenge?.title || "",
     description: lesson.challenge?.description || "",
+    language: lesson.challenge?.language || "javascript",
     starterCode: lesson.challenge?.starterCode || "// Write your code here\n",
     solution: lesson.challenge?.solution || "",
   });
@@ -113,7 +128,7 @@ export const EditLessonDialog = ({
       moduleId: lesson.module_id,
       title: lesson.title,
       content: lesson.content || "",
-      codeLanguage: "tsx",
+      codeLanguage: "python",
       codeSnippet: "",
       noteType: "note",
       linkUrl: "",
@@ -122,6 +137,7 @@ export const EditLessonDialog = ({
     setChallengeData({
       title: lesson.challenge?.title || "",
       description: lesson.challenge?.description || "",
+      language: lesson.challenge?.language || "javascript",
       starterCode: lesson.challenge?.starterCode || "// Write your code here\n",
       solution: lesson.challenge?.solution || "",
     });
@@ -339,8 +355,10 @@ export const EditLessonDialog = ({
       return;
     }
 
+    const detectedLanguage = detectCodeLanguage(formData.codeSnippet);
+
     appendToContent(
-      `\`\`\`${formData.codeLanguage}\n${formData.codeSnippet}\n\`\`\``,
+      `\`\`\`${detectedLanguage === "text" ? formData.codeLanguage : detectedLanguage}\n${formData.codeSnippet}\n\`\`\``,
     );
     toast.success("Code block added to lesson content");
     focusContentAtEnd();
@@ -422,9 +440,10 @@ export const EditLessonDialog = ({
     let challenge: CodingChallengeData | null = null;
     if (enableChallenge) {
       challenge = {
-        id: lesson.challenge?.id || crypto.randomUUID(),
+        id: lesson.challenge?.id || createUuid(),
         title: challengeData.title,
         description: challengeData.description,
+        language: challengeData.language,
         starterCode: challengeData.starterCode,
         solution: challengeData.solution,
         testCases: testCases.filter(
@@ -754,6 +773,33 @@ export const EditLessonDialog = ({
                             }
                           />
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Challenge Language *</Label>
+                        <Select
+                          value={challengeData.language}
+                          onValueChange={(value) =>
+                            setChallengeData({
+                              ...challengeData,
+                              language: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CHALLENGE_LANGUAGES.map((language) => (
+                              <SelectItem key={language} value={language}>
+                                {language.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Only JavaScript challenges can run tests in-browser for now.
+                        </p>
                       </div>
 
                       <div className="space-y-2">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle, HelpCircle, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LessonContent } from "@/components/markdown/RichTextEditor";
 
 export interface QuizQuestion {
   id: string;
@@ -246,7 +247,7 @@ export const Quiz = ({ questions, onComplete }: QuizProps) => {
       <div className="mb-4 flex items-start justify-between gap-3">
         <h4 className="text-lg font-semibold">{question.question}</h4>
         <span className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground">
-          {isMultiple ? "Multiple answers" : "Multiple choice"}
+          {isMultiple ? "Multiple answers" : "One answer"}
         </span>
       </div>
 
@@ -297,10 +298,13 @@ export const Quiz = ({ questions, onComplete }: QuizProps) => {
               : "bg-amber-500/10 border border-amber-500/30",
           )}
         >
-          <p className="text-sm">
-            <strong>Explanation:</strong>{" "}
-            {question.explanation || "No explanation provided."}
-          </p>
+          <p className="mb-2 text-sm font-semibold">Explanation:</p>
+          <LessonContent
+            content={
+              question.explanation?.trim() || "<p>No explanation provided.</p>"
+            }
+            className="max-w-none text-sm sm:text-sm [&_p]:my-1 [&_ul]:my-2 [&_ol]:my-2 [&_blockquote]:my-3 [&_pre]:my-2 [&_h1]:mt-3 [&_h1]:mb-2 [&_h2]:mt-3 [&_h2]:mb-2 [&_h3]:mt-3 [&_h3]:mb-2 [&_h4]:mt-3 [&_h4]:mb-2 [&_h5]:mt-3 [&_h5]:mb-2"
+          />
         </div>
       )}
 

@@ -14,6 +14,7 @@ import { api } from "@/integrations/django/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { CreateCourseDialog } from "@/components/learning/CreateCourseDialog";
+import { EditCourseDialog } from "@/components/learning/EditCourseDialog";
 import { Course, CourseModule, UserCourseProgress } from "@/types/learning";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -33,9 +34,11 @@ interface CourseWithProgress extends Course {
 
 interface CourseCardProps {
   course: CourseWithProgress;
+  isAdmin: boolean;
+  onCourseUpdated: () => void;
 }
 
-const CourseCard = ({ course }: CourseCardProps) => {
+const CourseCard = ({ course, isAdmin, onCourseUpdated }: CourseCardProps) => {
   const Icon = iconMap[course.icon || "Code"] || Code;
   const levelColors = {
     Beginner: "bg-green-500/10 text-green-500",
@@ -61,6 +64,13 @@ const CourseCard = ({ course }: CourseCardProps) => {
           <Badge variant="secondary" className={levelColors[course.level]}>
             {course.level}
           </Badge>
+          {isAdmin && (
+            <EditCourseDialog
+              course={course as Course}
+              onCourseUpdated={onCourseUpdated}
+              isAdmin={isAdmin}
+            />
+          )}
         </div>
       </div>
 
@@ -292,6 +302,8 @@ const Learning = () => {
                     <CourseCard
                       key={course.id}
                       course={course}
+                      isAdmin={isAdmin}
+                      onCourseUpdated={fetchCourses}
                     />
                   ))}
                 </div>

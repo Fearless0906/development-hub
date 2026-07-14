@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Node, mergeAttributes } from "@tiptap/core";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -16,6 +17,10 @@ import {
   Undo,
   Redo,
   LinkIcon,
+  Table2,
+  Plus,
+  Trash2,
+  Settings2,
 } from "lucide-react";
 import parse, { Element } from "html-react-parser";
 import { Button } from "@/components/ui/button";
@@ -36,25 +41,97 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FontSize } from "@/lib/FontSize";
+import { detectCodeLanguage } from "@/lib/detectCodeLanguage";
 import { CodeBlock } from "../code/CodeBlock";
+
+const TableNode = Node.create({
+  name: "table",
+  group: "block",
+  content: "tableRow+",
+  isolating: true,
+  parseHTML() {
+    return [{ tag: "table" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "table",
+      mergeAttributes(HTMLAttributes, {
+        class: "rich-text-table",
+      }),
+      ["tbody", 0],
+    ];
+  },
+});
+
+const TableRowNode = Node.create({
+  name: "tableRow",
+  content: "(tableHeader | tableCell)+",
+  tableRole: "row",
+  parseHTML() {
+    return [{ tag: "tr" }];
+  },
+  renderHTML() {
+    return ["tr", 0];
+  },
+});
+
+const TableHeaderNode = Node.create({
+  name: "tableHeader",
+  content: "block+",
+  tableRole: "header_cell",
+  isolating: true,
+  parseHTML() {
+    return [{ tag: "th" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["th", mergeAttributes(HTMLAttributes), 0];
+  },
+});
+
+const TableCellNode = Node.create({
+  name: "tableCell",
+  content: "block+",
+  tableRole: "cell",
+  isolating: true,
+  parseHTML() {
+    return [{ tag: "td" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["td", mergeAttributes(HTMLAttributes), 0];
+  },
+});
 
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  minHeight?: string;
 }
 
 export function RichTextEditor({
   value,
   onChange,
   placeholder = "Write lesson content...",
+  minHeight = "320px",
 }: RichTextEditorProps) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [codeDialogOpen, setCodeDialogOpen] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState("python");
+  const [codeValue, setCodeValue] = useState("");
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const [tableActionsOpen, setTableActionsOpen] = useState(false);
+  const [tableRows, setTableRows] = useState("3");
+  const [tableColumns, setTableColumns] = useState("3");
+  const [tableWithHeader, setTableWithHeader] = useState(true);
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit,
+      TableNode,
+      TableRowNode,
+      TableHeaderNode,
+      TableCellNode,
       TextStyle,
       FontFamily.configure({
         types: ["textStyle"],
@@ -75,6 +152,7 @@ export function RichTextEditor({
       attributes: {
         class:
           "min-h-[320px] rounded-b-xl border border-t-0 border-slate-200 bg-background px-4 py-4 text-sm leading-7 outline-none dark:border-white/10",
+        style: `min-height: ${minHeight};`,
       },
     },
     onUpdate: ({ editor }) => {
@@ -114,6 +192,16 @@ export function RichTextEditor({
     setLinkDialogOpen(true);
   };
 
+  const openCodeDialog = () => {
+    const { from, to } = editor.state.selection;
+    const selectedCode = editor.state.doc.textBetween(from, to, "\n");
+    setCodeValue(selectedCode);
+    setCodeLanguage(
+      selectedCode.trim() ? detectCodeLanguage(selectedCode) : "python",
+    );
+    setCodeDialogOpen(true);
+  };
+
   const applyLink = () => {
     const url = linkUrl.trim();
 
@@ -126,6 +214,238 @@ export function RichTextEditor({
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
     setLinkDialogOpen(false);
     setLinkUrl("");
+  };
+
+  const escapeHtml = (text: string) =>
+    text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const applyCodeBlock = () => {
+    const trimmed = codeValue.trim();
+    if (!trimmed) {
+      setCodeDialogOpen(false);
+      setCodeValue("");
+      return;
+    }
+
+    const html = `<pre><code class="language-${codeLanguage}">${escapeHtml(trimmed)}</code></pre>`;
+
+    if (editor.isActive("codeBlock")) {
+      const { $from } = editor.state.selection;
+      const codeBlockDepth = $from.depth;
+      const from = $from.before(codeBlockDepth);
+      const to = from + $from.node(codeBlockDepth).nodeSize;
+
+      editor
+        .chain()
+        .focus()
+        .setTextSelection({ from, to })
+        .deleteSelection()
+        .insertContent(html)
+        .run();
+    } else {
+      editor.chain().focus().insertContent(html).run();
+    }
+
+    setCodeDialogOpen(false);
+    setCodeValue("");
+    setCodeLanguage("python");
+  };
+
+  const applyTable = () => {
+    const rows = Math.max(1, Number.parseInt(tableRows, 10) || 0);
+    const columns = Math.max(1, Number.parseInt(tableColumns, 10) || 0);
+
+    const tableRowsHtml = [
+      tableWithHeader
+        ? `<tr>${Array.from({ length: columns }, (_, index) => `<th><p>Header ${index + 1}</p></th>`).join("")}</tr>`
+        : "",
+      ...Array.from({ length: rows }, (_, rowIndex) => {
+        return `<tr>${Array.from({ length: columns }, (_, columnIndex) => `<td><p>Cell ${rowIndex + 1}-${columnIndex + 1}</p></td>`).join("")}</tr>`;
+      }),
+    ]
+      .filter(Boolean)
+      .join("");
+
+    const html = `<table>${tableRowsHtml}</table><p></p>`;
+
+    editor.chain().focus().insertContent(html).run();
+    setTableDialogOpen(false);
+    setTableRows("3");
+    setTableColumns("3");
+    setTableWithHeader(true);
+  };
+
+  const getActiveTableInfo = () => {
+    const { $from } = editor.state.selection;
+    let tableDepth = -1;
+
+    for (let depth = $from.depth; depth >= 0; depth -= 1) {
+      if ($from.node(depth).type.name === "table") {
+        tableDepth = depth;
+        break;
+      }
+    }
+
+    if (tableDepth === -1) return null;
+
+    const tableNode = $from.node(tableDepth);
+
+    return {
+      tableDepth,
+      tableNode,
+      tablePos: $from.before(tableDepth),
+      rowIndex: $from.index(tableDepth),
+    };
+  };
+
+  const replaceActiveTable = (tableJson: Record<string, unknown>) => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(
+        {
+          from: info.tablePos,
+          to: info.tablePos + info.tableNode.nodeSize,
+        },
+        tableJson,
+      )
+      .run();
+  };
+
+  const createEmptyCell = (type: "tableHeader" | "tableCell") => ({
+    type,
+    content: [
+      {
+        type: "paragraph",
+      },
+    ],
+  });
+
+  const addTableRow = () => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    const tableJson = info.tableNode.toJSON() as {
+      type: string;
+      content?: Array<{ type: string; content?: Array<{ type: string }> }>;
+    };
+    const referenceRow = tableJson.content?.[info.rowIndex] || tableJson.content?.[0];
+
+    if (!referenceRow?.content?.length) return;
+
+    const newRow = {
+      type: "tableRow",
+      content: referenceRow.content.map((cell) =>
+        createEmptyCell(cell.type === "tableHeader" ? "tableHeader" : "tableCell"),
+      ),
+    };
+
+    const nextRows = [...(tableJson.content || [])];
+    nextRows.splice(info.rowIndex + 1, 0, newRow);
+
+    replaceActiveTable({
+      ...tableJson,
+      content: nextRows,
+    });
+  };
+
+  const addTableColumn = () => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    const tableJson = info.tableNode.toJSON() as {
+      type: string;
+      content?: Array<{ type: string; content?: Array<{ type: string }> }>;
+    };
+
+    const nextRows = (tableJson.content || []).map((row) => ({
+      ...row,
+      content: [
+        ...(row.content || []),
+        createEmptyCell(
+          row.content?.some((cell) => cell.type === "tableHeader")
+            ? "tableHeader"
+            : "tableCell",
+        ),
+      ],
+    }));
+
+    replaceActiveTable({
+      ...tableJson,
+      content: nextRows,
+    });
+  };
+
+  const deleteTableRow = () => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    const tableJson = info.tableNode.toJSON() as {
+      type: string;
+      content?: Array<{ type: string; content?: Array<{ type: string }> }>;
+    };
+
+    const rows = tableJson.content || [];
+    if (rows.length <= 1) return;
+
+    const nextRows = rows.filter((_, index) => index !== info.rowIndex);
+
+    replaceActiveTable({
+      ...tableJson,
+      content: nextRows,
+    });
+  };
+
+  const deleteTableColumn = () => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    const { $from } = editor.state.selection;
+    const rowDepth = info.tableDepth + 1;
+    const cellIndex = $from.index(rowDepth);
+
+    const tableJson = info.tableNode.toJSON() as {
+      type: string;
+      content?: Array<{
+        type: string;
+        content?: Array<{ type: string; content?: unknown[] }>;
+      }>;
+    };
+
+    const firstRowCells = tableJson.content?.[0]?.content || [];
+    if (firstRowCells.length <= 1) return;
+
+    const nextRows = (tableJson.content || []).map((row) => ({
+      ...row,
+      content: (row.content || []).filter((_, index) => index !== cellIndex),
+    }));
+
+    replaceActiveTable({
+      ...tableJson,
+      content: nextRows,
+    });
+  };
+
+  const removeTable = () => {
+    const info = getActiveTableInfo();
+    if (!info) return;
+
+    editor
+      .chain()
+      .focus()
+      .deleteRange({
+        from: info.tablePos,
+        to: info.tablePos + info.tableNode.nodeSize,
+      })
+      .run();
   };
 
   const tool = (
@@ -189,6 +509,237 @@ export function RichTextEditor({
                 Cancel
               </Button>
               <Button type="submit">Apply Link</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={tableDialogOpen}
+        onOpenChange={(open) => {
+          setTableDialogOpen(open);
+          if (!open) {
+            setTableRows("3");
+            setTableColumns("3");
+            setTableWithHeader(true);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Insert Table</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyTable();
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="rich-text-table-rows"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Rows
+                </label>
+                <Input
+                  id="rich-text-table-rows"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={tableRows}
+                  onChange={(event) => setTableRows(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="rich-text-table-columns"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Columns
+                </label>
+                <Input
+                  id="rich-text-table-columns"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={tableColumns}
+                  onChange={(event) => setTableColumns(event.target.value)}
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={tableWithHeader}
+                onChange={(event) => setTableWithHeader(event.target.checked)}
+                className="rounded border-input"
+              />
+              Add header row
+            </label>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTableDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Insert Table</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={tableActionsOpen}
+        onOpenChange={setTableActionsOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Table</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                addTableRow();
+                setTableActionsOpen(false);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Row
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                addTableColumn();
+                setTableActionsOpen(false);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Column
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                deleteTableRow();
+                setTableActionsOpen(false);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Row
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                deleteTableColumn();
+                setTableActionsOpen(false);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Column
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTableActionsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                removeTable();
+                setTableActionsOpen(false);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Table
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={codeDialogOpen}
+        onOpenChange={(open) => {
+          setCodeDialogOpen(open);
+          if (!open) {
+            setCodeValue("");
+            setCodeLanguage("python");
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Insert Code Block</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyCodeBlock();
+            }}
+          >
+            <div className="space-y-2">
+              <label
+                htmlFor="rich-text-code-language"
+                className="text-sm font-medium text-foreground"
+              >
+                Code Type
+              </label>
+              <Select value={codeLanguage} onValueChange={setCodeLanguage}>
+                <SelectTrigger id="rich-text-code-language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="python">Python</SelectItem>
+                  <SelectItem value="tsx">TSX</SelectItem>
+                  <SelectItem value="jsx">JSX</SelectItem>
+                  <SelectItem value="typescript">TypeScript</SelectItem>
+                  <SelectItem value="javascript">JavaScript</SelectItem>
+                  <SelectItem value="html">HTML</SelectItem>
+                  <SelectItem value="css">CSS</SelectItem>
+                  <SelectItem value="json">JSON</SelectItem>
+                  <SelectItem value="bash">Bash</SelectItem>
+                  <SelectItem value="sql">SQL</SelectItem>
+                  <SelectItem value="text">Plain Text</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="rich-text-code-value"
+                className="text-sm font-medium text-foreground"
+              >
+                Code
+              </label>
+              <textarea
+                id="rich-text-code-value"
+                value={codeValue}
+                onChange={(event) => setCodeValue(event.target.value)}
+                autoFocus
+                rows={12}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Paste or type your code here..."
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCodeDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Insert Code</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -266,9 +817,23 @@ export function RichTextEditor({
           <Quote className="h-4 w-4" />,
         )}
 
+        {tool(false, () => setTableDialogOpen(true), <Table2 className="h-4 w-4" />)}
+
+        {editor.isActive("table") && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setTableActionsOpen(true)}
+          >
+            <Settings2 className="mr-2 h-4 w-4" />
+            Table
+          </Button>
+        )}
+
         {tool(
           editor.isActive("codeBlock"),
-          () => editor.chain().focus().toggleCodeBlock().run(),
+          openCodeDialog,
           <Code className="h-4 w-4" />,
         )}
 
@@ -308,6 +873,12 @@ export function RichTextEditor({
           "[&_.ProseMirror_blockquote]:my-3 [&_.ProseMirror_blockquote]:border-l-4 [&_.ProseMirror_blockquote]:border-amber-500 [&_.ProseMirror_blockquote]:bg-amber-50 [&_.ProseMirror_blockquote]:px-4 [&_.ProseMirror_blockquote]:py-3 dark:[&_.ProseMirror_blockquote]:bg-amber-500/10",
           "[&_.ProseMirror_pre]:my-3 [&_.ProseMirror_pre]:rounded-xl [&_.ProseMirror_pre]:bg-slate-950 [&_.ProseMirror_pre]:p-4 [&_.ProseMirror_pre]:text-slate-100",
           "[&_.ProseMirror_code]:font-mono",
+          "[&_.ProseMirror_table]:my-5 [&_.ProseMirror_table]:w-full [&_.ProseMirror_table]:table-fixed [&_.ProseMirror_table]:border-collapse [&_.ProseMirror_table]:overflow-hidden [&_.ProseMirror_table]:rounded-2xl [&_.ProseMirror_table]:border [&_.ProseMirror_table]:border-slate-300/90 [&_.ProseMirror_table]:bg-white [&_.ProseMirror_table]:shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:[&_.ProseMirror_table]:border-white/15 dark:[&_.ProseMirror_table]:bg-slate-950/40 dark:[&_.ProseMirror_table]:shadow-none",
+          "[&_.ProseMirror_thead]:bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(241,245,249,1))] dark:[&_.ProseMirror_thead]:bg-[linear-gradient(180deg,rgba(30,41,59,0.95),rgba(15,23,42,0.95))]",
+          "[&_.ProseMirror_th]:border [&_.ProseMirror_th]:border-slate-300/90 [&_.ProseMirror_th]:px-3 [&_.ProseMirror_th]:py-2 [&_.ProseMirror_th]:text-left [&_.ProseMirror_th]:align-middle [&_.ProseMirror_th]:text-[0.95rem] [&_.ProseMirror_th]:font-semibold [&_.ProseMirror_th]:tracking-[-0.01em] [&_.ProseMirror_th]:text-slate-900 dark:[&_.ProseMirror_th]:border-white/15 dark:[&_.ProseMirror_th]:text-slate-100",
+          "[&_.ProseMirror_td]:border [&_.ProseMirror_td]:border-slate-200 [&_.ProseMirror_td]:px-3 [&_.ProseMirror_td]:py-2 [&_.ProseMirror_td]:align-middle [&_.ProseMirror_td]:text-slate-700 dark:[&_.ProseMirror_td]:border-white/10 dark:[&_.ProseMirror_td]:text-slate-200",
+          "[&_.ProseMirror_tbody_tr:nth-child(even)]:bg-slate-50/80 dark:[&_.ProseMirror_tbody_tr:nth-child(even)]:bg-white/[0.03]",
+          "[&_.ProseMirror_tbody_tr:hover]:bg-cyan-50/70 dark:[&_.ProseMirror_tbody_tr:hover]:bg-cyan-500/10",
         )}
       />
     </div>
@@ -316,6 +887,7 @@ export function RichTextEditor({
 
 interface LessonContentProps {
   content?: string | null;
+  className?: string;
 }
 
 const getTextContent = (node: any): string => {
@@ -330,7 +902,7 @@ const getTextContent = (node: any): string => {
   return "";
 };
 
-export function LessonContent({ content }: LessonContentProps) {
+export function LessonContent({ content, className }: LessonContentProps) {
   return (
     <div
       className={cn(
@@ -359,6 +931,13 @@ export function LessonContent({ content }: LessonContentProps) {
 
         "[&_blockquote]:my-6 [&_blockquote]:rounded-r-xl [&_blockquote]:border-l-4 [&_blockquote]:border-amber-500 [&_blockquote]:bg-amber-50 [&_blockquote]:px-5 [&_blockquote]:py-3 dark:[&_blockquote]:bg-amber-500/10",
         "[&_blockquote_p]:my-1",
+        "[&_table]:my-6 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_table]:overflow-hidden [&_table]:rounded-2xl [&_table]:border [&_table]:border-slate-300/90 [&_table]:bg-white [&_table]:shadow-[0_10px_30px_rgba(15,23,42,0.06)] dark:[&_table]:border-white/15 dark:[&_table]:bg-slate-950/40 dark:[&_table]:shadow-none",
+        "[&_thead]:bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(241,245,249,1))] dark:[&_thead]:bg-[linear-gradient(180deg,rgba(30,41,59,0.95),rgba(15,23,42,0.95))]",
+        "[&_th]:border [&_th]:border-slate-300/90 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:align-middle [&_th]:text-[0.95rem] [&_th]:font-semibold [&_th]:tracking-[-0.01em] [&_th]:text-slate-900 dark:[&_th]:border-white/15 dark:[&_th]:text-slate-100",
+        "[&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2 [&_td]:align-middle [&_td]:text-slate-700 dark:[&_td]:border-white/10 dark:[&_td]:text-slate-200",
+        "[&_tbody_tr:nth-child(even)]:bg-slate-50/80 dark:[&_tbody_tr:nth-child(even)]:bg-white/[0.03]",
+        "[&_tbody_tr:hover]:bg-cyan-50/70 dark:[&_tbody_tr:hover]:bg-cyan-500/10",
+        className,
       )}
     >
       {parse(content || "", {
@@ -369,10 +948,10 @@ export function LessonContent({ content }: LessonContentProps) {
             ) as Element | undefined;
 
             const className = codeNode?.attribs?.class || "";
-            const language =
-              className.match(/language-([\w-]+)/)?.[1] || "typescript";
-
             const code = getTextContent(codeNode || domNode);
+            const language =
+              className.match(/language-([\w-]+)/)?.[1] ||
+              detectCodeLanguage(code);
 
             return (
               <CodeBlock

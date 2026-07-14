@@ -113,6 +113,93 @@ const iconMap: Record<string, React.ElementType> = {
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
+const REORDER_TEMP_OFFSET = 1000000;
+
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+const isLikelyCommandLine = (line: string) =>
+  /^(npm|node|npx|pnpm|yarn|git|python|pip|cd|mkdir|touch|cp|mv|rm|ls|code|django-admin|uvicorn|python3|bun)\b/i.test(
+    line.trim(),
+  ) ||
+  /^(import|export|const|let|var|function|class)\b/.test(line.trim()) ||
+  /[{}();=<>]/.test(line);
+
+const isLikelySectionLabel = (line: string) =>
+  /^[A-Z][A-Za-z0-9 /&()-]{1,40}:?$/.test(line.trim()) &&
+  !/^https?:\/\//i.test(line.trim()) &&
+  !isLikelyCommandLine(line);
+
+const formatImportedLessonContent = (rawLines: string[]) => {
+  const blocks: string[] = [];
+  let codeBuffer: string[] = [];
+
+  const flushCodeBuffer = () => {
+    if (codeBuffer.length === 0) return;
+    blocks.push(
+      `<pre><code class="language-bash">${escapeHtml(codeBuffer.join("\n"))}</code></pre>`,
+    );
+    codeBuffer = [];
+  };
+
+  rawLines
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        Boolean(line) &&
+        !/^about:blank\b/i.test(line) &&
+        !/^\d+\s*\/\s*\d+$/.test(line),
+    )
+    .forEach((line) => {
+      if (isLikelyCommandLine(line)) {
+        codeBuffer.push(line);
+        return;
+      }
+
+      flushCodeBuffer();
+
+      if (/^\d+\.\d+\s+/.test(line)) {
+        blocks.push(`<h3>${escapeHtml(line)}</h3>`);
+        return;
+      }
+
+      if (/^https?:\/\//i.test(line)) {
+        const safeUrl = escapeHtml(line);
+        blocks.push(
+          `<p><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a></p>`,
+        );
+        return;
+      }
+
+      if (isLikelySectionLabel(line)) {
+        const normalized = line.endsWith(":") ? line.slice(0, -1) : line;
+        blocks.push(`<h4>${escapeHtml(normalized)}</h4>`);
+        return;
+      }
+
+      if (/^[A-Za-z][^:]{1,30}:\s+.+$/.test(line)) {
+        const [label, ...rest] = line.split(":");
+        blocks.push(
+          `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(
+            rest.join(":").trim(),
+          )}</p>`,
+        );
+        return;
+      }
+
+      blocks.push(`<p>${escapeHtml(line)}</p>`);
+    });
+
+  flushCodeBuffer();
+
+  return blocks.join("");
+};
+
 type CourseReview = {
   id: string;
   user_id: string;
@@ -469,14 +556,6 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   const handleExportPdf = () => {
     if (!course) return;
 
-    const escapeHtml = (value: string) =>
-      value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-
     const moduleHtml = modules
       .map(
         (module, moduleIndex) => `
@@ -661,10 +740,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
 
         for (let lessonIndex = 0; lessonIndex < importedModule.lessons.length; lessonIndex += 1) {
           const importedLesson = importedModule.lessons[lessonIndex];
-          const content = importedLesson.lines
-            .filter(Boolean)
-            .map((text) => `<p>${text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</p>`)
-            .join("");
+          const content = formatImportedLessonContent(importedLesson.lines);
           const { error: lessonError } = await api.from("lessons").insert({
             module_id: createdModule.id,
             title: importedLesson.title,
@@ -1098,23 +1174,56 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   };
 
   const persistModuleOrder = async (updatedModules: CourseModule[]) => {
-    const updates = updatedModules.map((module, index) =>
+    const temporaryUpdates = updatedModules.map((module, index) =>
+      api
+        .from("course_modules")
+        .update({ order_index: REORDER_TEMP_OFFSET + index })
+        .eq("id", module.id),
+    );
+
+    const temporaryResults = await Promise.all(temporaryUpdates);
+    const temporaryFailure = temporaryResults.find(({ error }) => error);
+
+    if (temporaryFailure?.error) {
+      throw temporaryFailure.error;
+    }
+
+    const finalUpdates = updatedModules.map((module, index) =>
       api
         .from("course_modules")
         .update({ order_index: index })
         .eq("id", module.id),
     );
 
-    const results = await Promise.all(updates);
-    const failedUpdate = results.find(({ error }) => error);
+    const finalResults = await Promise.all(finalUpdates);
+    const finalFailure = finalResults.find(({ error }) => error);
 
-    if (failedUpdate?.error) {
-      throw failedUpdate.error;
+    if (finalFailure?.error) {
+      throw finalFailure.error;
     }
   };
 
   const persistLessonOrder = async (updatedModules: CourseModule[]) => {
-    const updates = updatedModules.flatMap((module) =>
+    const temporaryUpdates = updatedModules.flatMap((module) =>
+      module.lessons.map((lesson, index) =>
+        api
+          .from("lessons")
+          .update({
+            module_id: module.id,
+            order_index: REORDER_TEMP_OFFSET + index,
+          })
+          .eq("id", lesson.id),
+      ),
+    );
+
+    const temporaryResults = await Promise.all(temporaryUpdates);
+    const temporaryFailure = temporaryResults.find(({ error }) => error);
+
+    if (temporaryFailure?.error) {
+      throw temporaryFailure.error;
+    }
+
+    const finalUpdates = updatedModules.flatMap((module) =>
       module.lessons.map((lesson, index) =>
         api
           .from("lessons")
@@ -1126,11 +1235,11 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
       ),
     );
 
-    const results = await Promise.all(updates);
-    const failedUpdate = results.find(({ error }) => error);
+    const finalResults = await Promise.all(finalUpdates);
+    const finalFailure = finalResults.find(({ error }) => error);
 
-    if (failedUpdate?.error) {
-      throw failedUpdate.error;
+    if (finalFailure?.error) {
+      throw finalFailure.error;
     }
   };
 
@@ -1214,6 +1323,12 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
 
     const module = modules.find((item) => item.id === lesson.module_id);
     if (!module) return;
+    const nextOrderIndex =
+      module.lessons.reduce(
+        (maxOrder, currentLesson) =>
+          Math.max(maxOrder, currentLesson.order_index),
+        -1,
+      ) + 1;
 
     const { data, error } = await api
       .from("lessons")
@@ -1223,7 +1338,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         content: lesson.content,
         duration: lesson.duration,
         video_url: lesson.video_url,
-        order_index: module.lessons.length,
+        order_index: nextOrderIndex,
         quiz: lesson.quiz as unknown as undefined,
         challenge: lesson.challenge as unknown as undefined,
         completion_rule: lesson.completion_rule,
@@ -1399,6 +1514,12 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
   const duplicateLesson = async (lesson: Lesson) => {
     const module = modules.find((item) => item.id === lesson.module_id);
     if (!module) return;
+    const nextOrderIndex =
+      module.lessons.reduce(
+        (maxOrder, currentLesson) =>
+          Math.max(maxOrder, currentLesson.order_index),
+        -1,
+      ) + 1;
     const { data, error } = await api
       .from("lessons")
       .insert({
@@ -1407,7 +1528,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         content: lesson.content || "",
         duration: lesson.duration || "",
         video_url: lesson.video_url || "",
-        order_index: module.lessons.length,
+        order_index: nextOrderIndex,
         quiz: lesson.quiz || [],
         challenge: lesson.challenge,
         completion_rule: lesson.completion_rule,
