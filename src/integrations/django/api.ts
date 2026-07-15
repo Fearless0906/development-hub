@@ -95,6 +95,7 @@ export const API_ENDPOINTS = {
   course_reviews: "course-reviews",
   course_certificates: "course-certificates",
   auth: {
+    csrf: "accounts/auth/csrf",
     register: "accounts/auth/users",
     me: "accounts/auth/users/me",
     login: "accounts/auth/jwt/create",
@@ -132,9 +133,58 @@ export const http = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+const CSRF_COOKIE_NAME = "csrftoken";
+const CSRF_HEADER_NAME = "X-CSRFToken";
+let csrfTokenPromise: Promise<string | null> | null = null;
+
+const readCookie = (name: string) => {
+  if (typeof document === "undefined") return null;
+
+  const cookie = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+
+  return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : null;
+};
+
+const isUnsafeMethod = (method?: string) =>
+  ["POST", "PUT", "PATCH", "DELETE"].includes((method || "GET").toUpperCase());
+
+const ensureCsrfToken = async (forceRefresh = false) => {
+  if (!forceRefresh) {
+    const token = readCookie(CSRF_COOKIE_NAME);
+    if (token) return token;
+  }
+
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = axios
+      .get(`${API_URL}/${API_ENDPOINTS.auth.csrf}/`, {
+        withCredentials: true,
+      })
+      .then(() => readCookie(CSRF_COOKIE_NAME))
+      .finally(() => {
+        csrfTokenPromise = null;
+      });
+  }
+
+  return csrfTokenPromise;
+};
+
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY);
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+http.interceptors.request.use(async (config) => {
+  if (!isUnsafeMethod(config.method)) return config;
+
+  const csrfToken = await ensureCsrfToken();
+  if (csrfToken) {
+    config.headers.set(CSRF_HEADER_NAME, csrfToken);
+  }
+
   return config;
 });
 
@@ -143,6 +193,22 @@ http.interceptors.response.use(
   async (error: AxiosError) => {
     const request = error.config as typeof error.config & { _retry?: boolean };
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    if (
+      error.response?.status === 403 &&
+      request &&
+      !request._retry &&
+      typeof error.response.data?.detail === "string" &&
+      error.response.data.detail.includes("CSRF")
+    ) {
+      request._retry = true;
+      const csrfToken = await ensureCsrfToken(true);
+
+      if (csrfToken) {
+        request.headers.set(CSRF_HEADER_NAME, csrfToken);
+        return http.request(request);
+      }
+    }
 
     if (
       error.response?.status === 401 &&
@@ -485,15 +551,16 @@ export const api = {
     },
     async signUp({ email, password, options }: any) {
       try {
-        const name = options?.data?.username || email.split("@")[0];
+        const firstName = options?.data?.first_name || email.split("@")[0];
+        const lastName = options?.data?.last_name || firstName;
         await fetchJson(`${API_URL}/${API_ENDPOINTS.auth.register}/`, {
           method: "POST",
           body: JSON.stringify({
             email,
             password,
             re_password: password,
-            first_name: name,
-            last_name: name,
+            first_name: firstName,
+            last_name: lastName,
           }),
         });
         return await this.signInWithPassword({ email, password });

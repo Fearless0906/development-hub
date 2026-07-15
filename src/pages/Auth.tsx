@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Code2,
-  Github,
   Mail,
   Lock,
   User,
@@ -20,14 +19,10 @@ const emailSchema = z.string().email("Please enter a valid email address");
 const passwordSchema = z
   .string()
   .min(6, "Password must be at least 6 characters");
-const usernameSchema = z
+const nameSchema = z
   .string()
-  .min(3, "Username must be at least 3 characters")
-  .max(20, "Username must be less than 20 characters")
-  .regex(
-    /^[a-zA-Z0-9_]+$/,
-    "Username can only contain letters, numbers, and underscores",
-  );
+  .min(2, "This field must be at least 2 characters")
+  .max(40, "This field must be less than 40 characters");
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -36,16 +31,17 @@ const Auth = () => {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{
     email?: string;
     password?: string;
-    username?: string;
+    firstName?: string;
+    lastName?: string;
   }>({});
 
-  const { user, signIn, signUp, signInWithGitHub, signInWithGoogle } =
-    useAuth();
+  const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -59,7 +55,12 @@ const Auth = () => {
   }, [searchParams]);
 
   const validateForm = () => {
-    const newErrors: { email?: string; password?: string; username?: string } =
+    const newErrors: {
+      email?: string;
+      password?: string;
+      firstName?: string;
+      lastName?: string;
+    } =
       {};
 
     const emailResult = emailSchema.safeParse(email);
@@ -73,9 +74,14 @@ const Auth = () => {
     }
 
     if (!isLogin) {
-      const usernameResult = usernameSchema.safeParse(username);
-      if (!usernameResult.success) {
-        newErrors.username = usernameResult.error.errors[0].message;
+      const firstNameResult = nameSchema.safeParse(firstName);
+      if (!firstNameResult.success) {
+        newErrors.firstName = firstNameResult.error.errors[0].message;
+      }
+
+      const lastNameResult = nameSchema.safeParse(lastName);
+      if (!lastNameResult.success) {
+        newErrors.lastName = lastNameResult.error.errors[0].message;
       }
     }
 
@@ -104,7 +110,10 @@ const Auth = () => {
           navigate("/");
         }
       } else {
-        const { error } = await signUp(email, password);
+        const { error } = await signUp(email, password, {
+          firstName,
+          lastName,
+        });
         if (error) {
           if (error.message.includes("already registered")) {
             toast.error("This email is already registered. Please sign in.");
@@ -121,18 +130,6 @@ const Auth = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGitHubSignIn = async () => {
-    setIsLoading(true);
-    await signInWithGitHub();
-    setIsLoading(false);
-  };
-
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true);
-    await signInWithGoogle();
-    setIsLoading(false);
   };
 
   return (
@@ -169,73 +166,50 @@ const Auth = () => {
             </p>
           </div>
 
-          {/* Social OAuth */}
-          <div className="space-y-3 mb-6">
-            <Button
-              variant="outline"
-              className="w-full h-12"
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              type="button"
-            >
-              <svg
-                className="h-5 w-5 mr-2"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  fill="#EA4335"
-                  d="M12 10.2v3.9h5.5c-.2 1.4-1.7 4-5.5 4-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.3 14.6 2.4 12 2.4 6.9 2.4 2.8 6.5 2.8 11.6S6.9 20.8 12 20.8c6.9 0 9.4-4.8 9.4-8.5 0-.6-.1-1-.2-1.5H12z"
-                />
-              </svg>
-              Continue with Google
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full h-12"
-              onClick={handleGitHubSignIn}
-              disabled={isLoading}
-              type="button"
-            >
-              <Github className="h-5 w-5 mr-2" />
-              Continue with GitHub
-            </Button>
-          </div>
-
-          {/* Divider */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                Or continue with email
-              </span>
-            </div>
-          </div>
-
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-foreground">
-                  Username
-                </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="username"
-                    type="text"
-                    placeholder="your_username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className={`pl-10 h-12 bg-secondary/50 border-border ${errors.username ? "border-destructive" : ""}`}
-                    disabled={isLoading}
-                  />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName" className="text-foreground">
+                    First Name
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="John"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className={`pl-10 h-12 bg-secondary/50 border-border ${errors.firstName ? "border-destructive" : ""}`}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {errors.firstName && (
+                    <p className="text-sm text-destructive">{errors.firstName}</p>
+                  )}
                 </div>
-                {errors.username && (
-                  <p className="text-sm text-destructive">{errors.username}</p>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="lastName" className="text-foreground">
+                    Last Name
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Doe"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className={`pl-10 h-12 bg-secondary/50 border-border ${errors.lastName ? "border-destructive" : ""}`}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {errors.lastName && (
+                    <p className="text-sm text-destructive">{errors.lastName}</p>
+                  )}
+                </div>
               </div>
             )}
 

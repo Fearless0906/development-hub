@@ -28,7 +28,11 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
 
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    profile: { firstName: string; lastName: string },
+  ) => Promise<{ error: Error | null }>;
 
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
 
@@ -110,10 +114,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const signUp = async (email: string, password: string) => {
-    const baseName = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
-
-    const username = `${baseName}_${crypto.randomUUID().slice(0, 6)}`;
+  const signUp = async (
+    email: string,
+    password: string,
+    profile: { firstName: string; lastName: string },
+  ) => {
+    const firstName = profile.firstName.trim();
+    const lastName = profile.lastName.trim();
 
     const { error } = await api.auth.signUp({
       email,
@@ -121,7 +128,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       options: {
         emailRedirectTo: `${window.location.origin}/`,
         data: {
-          username,
+          first_name: firstName,
+          last_name: lastName,
         },
       },
     });

@@ -1,8 +1,9 @@
 from django.urls import path, include, re_path
 
-from .views import NetworkProviderAuthView
+from .views import CsrfTokenView, NetworkProviderAuthView
 
 urlpatterns = [
+    path("auth/csrf/", CsrfTokenView.as_view(), name="csrf-token"),
     re_path(
         r"^auth/o/(?P<provider>\S+)/$",
         NetworkProviderAuthView.as_view(),

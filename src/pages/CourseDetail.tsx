@@ -2013,6 +2013,70 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
           </DialogContent>
         </Dialog>
 
+        <Dialog
+          open={Boolean(editingLessonId)}
+          onOpenChange={(open) => {
+            if (open) return;
+            if (savingLessonId) return;
+
+            setEditingLessonId(null);
+            setEditingContent("");
+          }}
+        >
+          <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden p-0">
+            <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
+              <DialogTitle>Edit Lesson Content</DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <RichTextEditor
+                value={editingContent}
+                onChange={setEditingContent}
+                minHeight="70vh"
+              />
+            </div>
+            <DialogFooter className="shrink-0 border-t border-border/60 bg-background px-6 py-4">
+              <Button
+                variant="outline"
+                disabled={Boolean(savingLessonId)}
+                onClick={() => {
+                  setEditingLessonId(null);
+                  setEditingContent("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={!editingLessonId || Boolean(savingLessonId)}
+                onClick={async () => {
+                  if (!editingLessonId) return;
+
+                  setSavingLessonId(editingLessonId);
+
+                  const { error } = await api
+                    .from("lessons")
+                    .update({ content: editingContent })
+                    .eq("id", editingLessonId);
+
+                  setSavingLessonId(null);
+
+                  if (error) {
+                    toast.error("Failed to save lesson");
+                    return;
+                  }
+
+                  toast.success("Lesson saved");
+                  const savedLessonId = editingLessonId;
+                  setEditingLessonId(null);
+                  setEditingContent("");
+                  fetchCourseData(savedLessonId);
+                }}
+              >
+                {savingLessonId ? "Saving..." : "Save Lesson"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <AlertDialog
           open={Boolean(lessonToDelete)}
           onOpenChange={(open) => {
@@ -2447,55 +2511,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
                             </div>
                           </div>
 
-                          {editingLessonId === lesson.id ? (
-                            <div className="max-h-[70vh] space-y-4 overflow-y-auto overscroll-contain pr-1">
-                              <RichTextEditor
-                                value={editingContent}
-                                onChange={setEditingContent}
-                              />
-
-                              <div className="sticky bottom-0 z-20 flex justify-end gap-2 border-t border-border/60 bg-card/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-                                <Button
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingLessonId(null);
-                                    setEditingContent("");
-                                  }}
-                                >
-                                  Cancel
-                                </Button>
-
-                                <Button
-                                  disabled={savingLessonId === lesson.id}
-                                  onClick={async () => {
-                                    setSavingLessonId(lesson.id);
-
-                                    const { error } = await api
-                                      .from("lessons")
-                                      .update({ content: editingContent })
-                                      .eq("id", lesson.id);
-
-                                    setSavingLessonId(null);
-
-                                    if (error) {
-                                      toast.error("Failed to save lesson");
-                                      return;
-                                    }
-
-                                    toast.success("Lesson saved");
-                                    setEditingLessonId(null);
-                                    fetchCourseData(lesson.id);
-                                  }}
-                                >
-                                  {savingLessonId === lesson.id
-                                    ? "Saving..."
-                                    : "Save Lesson"}
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <LessonContent content={lesson.content} />
-                          )}
+                          <LessonContent content={lesson.content} />
 
                           {(() => {
                             const quiz = normalizeQuizData(lesson.quiz);

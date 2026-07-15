@@ -12,8 +12,10 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import ipaddress
 import environ
 import os
+import socket
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 
 
@@ -166,13 +168,50 @@ DEFAULT_FRONTEND_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+
+
+def get_debug_private_frontend_origins():
+    origins = []
+    candidate_hosts = set()
+
+    try:
+        candidate_hosts.update(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:
+        pass
+
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            address = info[4][0]
+            candidate_hosts.add(address)
+    except OSError:
+        pass
+
+    private_hosts = []
+    for host in candidate_hosts:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            continue
+
+        if address.version == 4 and address.is_private:
+            private_hosts.append(str(address))
+
+    for host in sorted(set(private_hosts)):
+        origins.append(f'http://{host}:8080')
+        origins.append(f'http://{host}:5173')
+
+    return origins
+
+
 CONFIGURED_FRONTEND_ORIGINS = [
     origin.strip().rstrip('/')
     for origin in env('FRONTEND_ORIGINS', default='').split(',')
     if origin.strip()
 ]
 FRONTEND_ORIGINS = list(dict.fromkeys(
-    DEFAULT_FRONTEND_ORIGINS + CONFIGURED_FRONTEND_ORIGINS
+    DEFAULT_FRONTEND_ORIGINS
+    + (get_debug_private_frontend_origins() if DEBUG else [])
+    + CONFIGURED_FRONTEND_ORIGINS
 ))
 
 # Frontend origins allowed to call the Django API.
