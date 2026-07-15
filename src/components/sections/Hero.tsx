@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Github, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export const Hero = () => {
-  const { signInWithGitHub } = useAuth();
+  const { user } = useAuth();
+  const primaryCtaPath = user ? "/learning" : "/auth";
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
@@ -40,14 +41,10 @@ export const Hero = () => {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 mb-16 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             <Button variant="hero" size="xl" asChild>
-              <Link to="/learning">
+              <Link to={primaryCtaPath}>
                 Start Learning
                 <ArrowRight className="h-5 w-5" />
               </Link>
-            </Button>
-            <Button variant="heroOutline" size="xl" onClick={signInWithGitHub}>
-              <Github className="h-5 w-5" />
-              Continue with GitHub
             </Button>
           </div>
 
