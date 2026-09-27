@@ -2,7 +2,7 @@ import axios, { AxiosError } from "axios";
 
 const getApiUrl = () => {
   const configuredUrl =
-    import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+    import.meta.env.VITE_API_URL || "https://fearless09.pythonanywhere.com/api/v1";
   const apiUrl = new URL(configuredUrl, window.location.origin);
   const apiUsesLocalhost = ["localhost", "127.0.0.1", "::1"].includes(
     apiUrl.hostname,
@@ -640,7 +640,7 @@ export const api = {
           return {
             data: null,
             error: new Error(
-              `Cannot connect to the Django backend at ${new URL(API_URL).origin}. Start it with: npm run dev:backend`,
+              `Cannot connect to the Django cds-backend at ${new URL(API_URL).origin}. Start it with: npm run dev:cds-backend`,
             ),
           };
         }

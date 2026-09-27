@@ -36,6 +36,6 @@ dist-ssr
 *.sln
 *.sw?
 
-backend/cds_course/.env
-backend/cds_course/db.sqlite3
+cds-backend/cds_course/.env
+cds-backend/cds_course/db.sqlite3
 *.sqlite3

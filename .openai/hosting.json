@@ -4,8 +4,8 @@
       "root": ".",
       "framework": "vite"
     },
-    "backend": {
-      "root": "backend"
+    "cds-backend": {
+      "root": "cds-backend"
     }
   },
   "rewrites": [
@@ -13,7 +13,7 @@
       "source": "/api(/.*)?",
       "destination": {
         "type": "service",
-        "service": "backend"
+        "service": "cds-backend"
       }
     },
     {
