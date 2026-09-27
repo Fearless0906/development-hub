@@ -1,8 +1,9 @@
 import axios, { AxiosError } from "axios";
 
+const DEFAULT_API_URL = "https://fearless09.pythonanywhere.com/api/v1";
+
 const getApiUrl = () => {
-  const configuredUrl =
-    import.meta.env.VITE_API_URL || "https://fearless09.pythonanywhere.com/api/v1";
+  const configuredUrl = import.meta.env.VITE_API_BASE_URL || DEFAULT_API_URL;
   const apiUrl = new URL(configuredUrl, window.location.origin);
   const apiUsesLocalhost = ["localhost", "127.0.0.1", "::1"].includes(
     apiUrl.hostname,
@@ -137,6 +138,11 @@ const CSRF_COOKIE_NAME = "csrftoken";
 const CSRF_HEADER_NAME = "X-CSRFToken";
 let csrfTokenPromise: Promise<string | null> | null = null;
 
+// In production the frontend (vercel.app) and backend (pythonanywhere.com) are
+// different domains, so the backend's csrftoken cookie cannot be read with
+// document.cookie. Keep the token returned by the CSRF endpoint in memory.
+let csrfTokenCache: string | null = null;
+
 const readCookie = (name: string) => {
   if (typeof document === "undefined") return null;
 
@@ -153,7 +159,7 @@ const isUnsafeMethod = (method?: string) =>
 
 const ensureCsrfToken = async (forceRefresh = false) => {
   if (!forceRefresh) {
-    const token = readCookie(CSRF_COOKIE_NAME);
+    const token = csrfTokenCache || readCookie(CSRF_COOKIE_NAME);
     if (token) return token;
   }
 
@@ -162,7 +168,15 @@ const ensureCsrfToken = async (forceRefresh = false) => {
       .get(`${API_URL}/${API_ENDPOINTS.auth.csrf}/`, {
         withCredentials: true,
       })
-      .then(() => readCookie(CSRF_COOKIE_NAME))
+      .then((response) => {
+        csrfTokenCache =
+          response.data?.csrfToken ||
+          response.data?.csrf_token ||
+          response.data?.csrf ||
+          readCookie(CSRF_COOKIE_NAME);
+        return csrfTokenCache;
+      })
+      .catch(() => null)
       .finally(() => {
         csrfTokenPromise = null;
       });
@@ -198,8 +212,8 @@ http.interceptors.response.use(
       error.response?.status === 403 &&
       request &&
       !request._retry &&
-      typeof error.response.data?.detail === "string" &&
-      error.response.data.detail.includes("CSRF")
+      typeof (error.response.data as any)?.detail === "string" &&
+      (error.response.data as any).detail.includes("CSRF")
     ) {
       request._retry = true;
       const csrfToken = await ensureCsrfToken(true);
@@ -640,7 +654,7 @@ export const api = {
           return {
             data: null,
             error: new Error(
-              `Cannot connect to the Django cds-backend at ${new URL(API_URL).origin}. Start it with: npm run dev:cds-backend`,
+              `Cannot connect to the Django backend at ${new URL(API_URL).origin}. Please check that the server is running.`,
             ),
           };
         }
