@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { CreateCourseDialog } from "@/components/learning/CreateCourseDialog";
 import { EditCourseDialog } from "@/components/learning/EditCourseDialog";
+import { ImportCourseDialog } from "@/components/learning/ImportCourseDialog";
 import { Course, CourseModule, UserCourseProgress } from "@/types/learning";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -242,8 +243,9 @@ const Learning = () => {
               with hands-on projects and real-world examples.
             </p>
             {isAdmin && (
-              <div className="mt-6 flex justify-center">
+              <div className="mt-6 flex justify-center gap-3">
                 <CreateCourseDialog onCourseCreated={fetchCourses} />
+                <ImportCourseDialog onCourseImported={fetchCourses} />
               </div>
             )}
           </div>
@@ -291,8 +293,9 @@ const Learning = () => {
                       : "No courses available for this filter"}
                   </p>
                   {isAdmin && activeTab === "all" && (
-                    <div className="mt-4 flex justify-center">
+                    <div className="mt-4 flex justify-center gap-3">
                       <CreateCourseDialog onCourseCreated={fetchCourses} />
+                      <ImportCourseDialog onCourseImported={fetchCourses} />
                     </div>
                   )}
                 </div>

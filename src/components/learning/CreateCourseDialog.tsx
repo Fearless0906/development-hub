@@ -43,12 +43,12 @@ export const CreateCourseDialog = ({ onCourseCreated }: CreateCourseDialogProps)
 
     const { error } = await api.from("courses").insert({
       title: formData.title,
-      description: formData.description || null,
+      description: formData.description,
       slug,
       level: formData.level,
       duration: null,
-      instructor_name: formData.instructorName || null,
-      instructor_title: formData.instructorTitle || null,
+      instructor_name: formData.instructorName,
+      instructor_title: formData.instructorTitle,
       topics: formData.topics ? formData.topics.split(",").map((t) => t.trim()) : [],
       thumbnail_url: formData.thumbnailUrl.trim(),
       is_published: true,

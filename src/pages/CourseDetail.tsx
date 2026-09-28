@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   useParams,
   Link,
@@ -92,6 +90,12 @@ import {
 } from "@/components/learning/CodingChallenge";
 import { CreateLessonDialog } from "@/components/learning/CreateLessonDialog";
 import { cn } from "@/lib/utils";
+import {
+  escapeHtml,
+  extractPdfTextLines,
+  formatImportedLessonContent,
+  parseModulesFromLines,
+} from "@/lib/pdfCourseImport";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { api } from "@/integrations/django/api";
@@ -111,94 +115,7 @@ const iconMap: Record<string, React.ElementType> = {
   BookOpen,
 };
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
 const REORDER_TEMP_OFFSET = 1000000;
-
-const escapeHtml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
-const isLikelyCommandLine = (line: string) =>
-  /^(npm|node|npx|pnpm|yarn|git|python|pip|cd|mkdir|touch|cp|mv|rm|ls|code|django-admin|uvicorn|python3|bun)\b/i.test(
-    line.trim(),
-  ) ||
-  /^(import|export|const|let|var|function|class)\b/.test(line.trim()) ||
-  /[{}();=<>]/.test(line);
-
-const isLikelySectionLabel = (line: string) =>
-  /^[A-Z][A-Za-z0-9 /&()-]{1,40}:?$/.test(line.trim()) &&
-  !/^https?:\/\//i.test(line.trim()) &&
-  !isLikelyCommandLine(line);
-
-const formatImportedLessonContent = (rawLines: string[]) => {
-  const blocks: string[] = [];
-  let codeBuffer: string[] = [];
-
-  const flushCodeBuffer = () => {
-    if (codeBuffer.length === 0) return;
-    blocks.push(
-      `<pre><code class="language-bash">${escapeHtml(codeBuffer.join("\n"))}</code></pre>`,
-    );
-    codeBuffer = [];
-  };
-
-  rawLines
-    .map((line) => line.trim())
-    .filter(
-      (line) =>
-        Boolean(line) &&
-        !/^about:blank\b/i.test(line) &&
-        !/^\d+\s*\/\s*\d+$/.test(line),
-    )
-    .forEach((line) => {
-      if (isLikelyCommandLine(line)) {
-        codeBuffer.push(line);
-        return;
-      }
-
-      flushCodeBuffer();
-
-      if (/^\d+\.\d+\s+/.test(line)) {
-        blocks.push(`<h3>${escapeHtml(line)}</h3>`);
-        return;
-      }
-
-      if (/^https?:\/\//i.test(line)) {
-        const safeUrl = escapeHtml(line);
-        blocks.push(
-          `<p><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a></p>`,
-        );
-        return;
-      }
-
-      if (isLikelySectionLabel(line)) {
-        const normalized = line.endsWith(":") ? line.slice(0, -1) : line;
-        blocks.push(`<h4>${escapeHtml(normalized)}</h4>`);
-        return;
-      }
-
-      if (/^[A-Za-z][^:]{1,30}:\s+.+$/.test(line)) {
-        const [label, ...rest] = line.split(":");
-        blocks.push(
-          `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(
-            rest.join(":").trim(),
-          )}</p>`,
-        );
-        return;
-      }
-
-      blocks.push(`<p>${escapeHtml(line)}</p>`);
-    });
-
-  flushCodeBuffer();
-
-  return blocks.join("");
-};
 
 type CourseReview = {
   id: string;
@@ -656,76 +573,22 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
     setImportingPdf(true);
 
     try {
-      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-      const lines: { text: string; size: number }[] = [];
+      const rawLines = await extractPdfTextLines(file);
+      const lines = rawLines.filter(
+        (line) => !line.startsWith(`${course.title} - Course`),
+      );
 
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        const pageLines = new Map<number, { parts: { x: number; text: string }[]; size: number }>();
+      const fallbackModuleTitle =
+        file.name.replace(/\.pdf$/i, "").trim() || "Imported Lessons";
+      const resultModules = parseModulesFromLines(lines, fallbackModuleTitle);
 
-        for (const rawItem of content.items) {
-          if (!("str" in rawItem) || !rawItem.str.trim()) continue;
-          const y = Math.round(rawItem.transform[5]);
-          const existing = pageLines.get(y) || { parts: [], size: 0 };
-          existing.parts.push({ x: rawItem.transform[4], text: rawItem.str });
-          existing.size = Math.max(existing.size, rawItem.height || Math.abs(rawItem.transform[3]));
-          pageLines.set(y, existing);
-        }
-
-        [...pageLines.entries()]
-          .sort(([firstY], [secondY]) => secondY - firstY)
-          .forEach(([, line]) => {
-            const text = line.parts
-              .sort((first, second) => first.x - second.x)
-              .map((part) => part.text)
-              .join(" ")
-              .replace(/\s+/g, " ")
-              .trim();
-            if (
-              text &&
-              !/^\d+ of \d+$/.test(text) &&
-              !/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(text) &&
-              !text.startsWith(`${course.title} - Course`)
-            ) {
-              lines.push({ text, size: line.size });
-            }
-          });
-      }
-
-      type ImportedLesson = { title: string; lines: string[] };
-      type ImportedModule = { title: string; lessons: ImportedLesson[] };
-      const importedModules: ImportedModule[] = [];
-      let currentModule: ImportedModule | null = null;
-      let currentLesson: ImportedLesson | null = null;
-
-      for (const line of lines) {
-        const moduleMatch = line.text.match(/^Module\s+\d+\s*:\s*(.+)$/i);
-        if (moduleMatch && line.size >= 16) {
-          currentModule = { title: moduleMatch[1].trim(), lessons: [] };
-          importedModules.push(currentModule);
-          currentLesson = null;
-          continue;
-        }
-
-        const lessonMatch = line.text.match(/^\d+\.\d+\s+(.+)$/);
-        if (lessonMatch && currentModule && line.size >= 13 && line.size < 16) {
-          currentLesson = { title: lessonMatch[1].trim(), lines: [] };
-          currentModule.lessons.push(currentLesson);
-          continue;
-        }
-
-        if (currentLesson) currentLesson.lines.push(line.text);
-      }
-
-      const validModules = importedModules.filter((module) => module.lessons.length > 0);
-      if (validModules.length === 0) {
+      if (resultModules.length === 0) {
         toast.error("No modules and lessons were found in this PDF format");
         return;
       }
 
-      for (let moduleIndex = 0; moduleIndex < validModules.length; moduleIndex += 1) {
-        const importedModule = validModules[moduleIndex];
+      for (let moduleIndex = 0; moduleIndex < resultModules.length; moduleIndex += 1) {
+        const importedModule = resultModules[moduleIndex];
         const { data: createdModule, error: moduleError } = await api
           .from("course_modules")
           .insert({
@@ -752,7 +615,7 @@ const CourseDetail = ({ adminView = false }: CourseDetailProps) => {
         }
       }
 
-      toast.success(`Imported ${validModules.length} module${validModules.length === 1 ? "" : "s"} from PDF`);
+      toast.success(`Imported ${resultModules.length} module${resultModules.length === 1 ? "" : "s"} from PDF`);
       await fetchCourseData();
     } catch (error) {
       console.error("Error importing PDF:", error);

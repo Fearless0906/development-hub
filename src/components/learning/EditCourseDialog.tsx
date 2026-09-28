@@ -68,11 +68,11 @@ export const EditCourseDialog = ({
       .from("courses")
       .update({
         title: formData.title,
-        description: formData.description || null,
+        description: formData.description,
         slug,
         level: formData.level,
-        instructor_name: formData.instructorName || null,
-        instructor_title: formData.instructorTitle || null,
+        instructor_name: formData.instructorName,
+        instructor_title: formData.instructorTitle,
         topics: formData.topics
           ? formData.topics.split(",").map((topic) => topic.trim())
           : [],
